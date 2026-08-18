@@ -2,9 +2,9 @@
 
 | Target | Status | Notes |
 | --- | --- | --- |
-| macOS arm64 | Tested locally | PTY lifecycle, polling, resize, ANSI backend, and editor tests pass. |
-| Linux x86-64 | CI configured | Runs on `ubuntu-24.04`. |
-| Linux ARM64 | CI configured | Runs on `ubuntu-24.04-arm`; the pinned Mojo package is available for `linux-aarch64`. |
+| macOS ARM64 | Tested locally and in CI | PTY lifecycle, polling, resize, ANSI backend, and editor tests pass. |
+| Linux x86-64 | Tested in CI | The complete locked check passes on `ubuntu-24.04`. |
+| Linux ARM64 | Tested locally and in CI | The complete locked check passes on `ubuntu-24.04-arm`. |
 | Windows | Unsupported | The current platform boundary requires POSIX descriptors, termios, poll, and ioctl. |
 
 Mojotui expects a UTF-8 terminal with ANSI cursor movement, SGR styling, and the

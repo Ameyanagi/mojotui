@@ -19,10 +19,10 @@ The Phase 0 evidence and go decision are recorded in
 [`FEASIBILITY.md`](FEASIBILITY.md). Phases 1 through 6 have local
 implementations and test coverage, including the renderer, terminal session,
 widgets, application state/effect model, editor engine, forms, inline output,
-OSC 52 copy, and runtime-neutral task bridge. Linux CI remains an outstanding
-hard gate until the repository is published; macOS PTY lifecycle, polling,
-restoration, Unicode, static-generic APIs, and rendering and editor benchmarks
-have passed locally.
+OSC 52 copy, and runtime-neutral task bridge. The complete locked check passes
+on hosted macOS ARM64, Linux ARM64, and Linux x86-64 runners. Local macOS and
+Linux ARM64 validation also covers PTY lifecycle, polling, restoration,
+Unicode, static-generic APIs, and the unsafe boundary.
 
 ## Product scope
 
@@ -461,6 +461,11 @@ The 2026-08-19 macOS arm64 run used Mojo
 The compiler distribution links against a newer macOS deployment target than
 the local build target and emits linker warnings during executable builds. The
 builds exit successfully. This toolchain warning is outside Mojotui source.
+
+GitHub Actions run `32193144975` passed the same locked check on macOS ARM64,
+Linux ARM64, and Linux x86-64. The CI workflow runs on pushes and pull requests.
+A separate tag workflow repeats the matrix and creates a source release only
+after every target passes.
 
 ## Risk register
 

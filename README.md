@@ -1,5 +1,7 @@
 # Mojotui
 
+[![CI](https://github.com/Ameyanagi/mojotui/actions/workflows/ci.yml/badge.svg)](https://github.com/Ameyanagi/mojotui/actions/workflows/ci.yml)
+
 Mojotui is an experimental terminal UI library for Mojo. Its rendering model
 borrows the useful parts of Ratatui: immediate-mode widgets draw into a cell
 buffer, a backend compares frames, and application state stays outside widgets.
@@ -96,6 +98,6 @@ backend objects. [TYPE_SAFETY.md](TYPE_SAFETY.md) records the enforced rules.
 
 ## Status
 
-The APIs may change before 1.0. Local macOS tests and benchmarks pass. The CI
-workflow includes Linux and macOS jobs, but this directory has no Git history or
-remote, so no hosted CI run has been observed yet.
+The APIs may change before 1.0. Local macOS and Linux ARM64 validation passes.
+GitHub Actions runs the complete locked check on macOS ARM64, Linux ARM64, and
+Linux x86-64.

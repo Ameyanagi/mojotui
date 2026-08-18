@@ -2,7 +2,6 @@
 
 - The project follows a pinned Mojo nightly and has no source-compatibility
   promise before 1.0.
-- Hosted Linux CI has not run because this working directory has no Git remote.
 - Windows has no terminal backend or event reactor.
 - Inline rendering owns a fixed height. Writes through the same terminal
   descriptor while it is active break its cursor anchor.

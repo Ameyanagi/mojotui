@@ -4,8 +4,8 @@
 
 Proceed with the project. The rendering, Unicode, static-generic API, terminal
 lifecycle, input parsing, POSIX polling, and performance experiments are viable
-on the pinned Mojo nightly. Linux remains a hard CI gate before a release; the
-workflow is present, but this workspace has only executed the macOS arm64 job.
+on the pinned Mojo nightly. The complete locked check passes in GitHub Actions
+on macOS ARM64, Linux ARM64, and Linux x86-64.
 
 ## Tested toolchain
 
@@ -93,9 +93,8 @@ public general runtime when that API exists. Until then, the synchronous POSIX
 reactor is the supported implementation, and stale-result rejection remains
 the fallback where underlying work cannot be cancelled.
 
-## Remaining Phase 0 evidence
+## Deferred evidence
 
-- Observe the Linux GitHub Actions job passing, including PTY tests.
 - Test restoration after a background-task failure once a supported runtime
   adapter exists; raised synchronous failures are already covered.
 - Add sanitizer jobs for the allowlisted platform module when the CI toolchain
