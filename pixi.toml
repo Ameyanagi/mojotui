@@ -1,0 +1,26 @@
+[workspace]
+authors = ["Ameyanagi <ryuichi@ameyanagi.com>"]
+channels = ["https://conda.modular.com/max-nightly", "conda-forge"]
+name = "mojotui"
+platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
+version = "0.1.0"
+
+[tasks]
+bench = { cmd = "mojo run -I . benchmarks/render.mojo", description = "Benchmark full and changed 80x24 ANSI frames" }
+bench-editor = { cmd = "mojo run -I . benchmarks/editor.mojo", description = "Benchmark 10 MiB editor edits, history, and viewport rendering" }
+check = { depends-on = ["test", "lint"], description = "Run the complete non-mutating validation suite" }
+compiler-lint = { cmd = "mojo precompile --Werror mojotui -o .pixi/mojotui-lint.mojoc", description = "Compile the package with warnings treated as errors" }
+dashboard = { cmd = "mojo run -I . examples/dashboard.mojo", description = "Run the interactive system-monitor dashboard example" }
+format = { cmd = "bash scripts/format.sh", description = "Format Mojo source files in place" }
+format-check = { cmd = "bash scripts/check-format.sh", description = "Verify Mojo formatting without modifying source files" }
+generate-unicode = { cmd = "python scripts/generate-unicode-width.py", description = "Regenerate pinned Unicode width tables" }
+lint = { depends-on = ["format-check", "type-check", "unsafe-check"], description = "Run formatting, strict-type, and unsafe-boundary checks" }
+precompile = { cmd = "mojo precompile mojotui -o .pixi/mojotui-check.mojoc", description = "Precompile the mojotui package" }
+test = { cmd = "bash scripts/test.sh", description = "Run all Mojo TestSuite files" }
+type-check = { depends-on = ["type-policy-check", "compiler-lint"], description = "Enforce static API policy and compile with warnings as errors" }
+type-policy-check = { cmd = "bash scripts/check-types.sh", description = "Reject obsolete declarations and dynamic escape-hatch types" }
+unsafe-check = { cmd = "bash scripts/check-unsafe.sh", description = "Reject unsafe or FFI operations outside the platform boundary" }
+
+[dependencies]
+mojo = "==1.1.0.dev2026081813"
+ripgrep = ">=14,<16"

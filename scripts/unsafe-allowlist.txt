@@ -1,0 +1,2 @@
+# Files permitted to contain Mojotui-owned FFI or unsafe operations.
+mojotui/platform/posix.mojo

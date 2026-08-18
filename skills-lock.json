@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "skills": {
+    "deslop": {
+      "source": "Ameyanagi/fleet",
+      "sourceType": "github",
+      "skillPath": "skills/deslop/SKILL.md",
+      "computedHash": "1a2491ef5fa92e13dc113d3c4fb1a93d32f00626acf621a4f0dc25f23356b71b"
+    },
+    "grill-me": {
+      "source": "Ameyanagi/fleet",
+      "sourceType": "github",
+      "skillPath": "skills/grill-me/SKILL.md",
+      "computedHash": "9cdbb4b8f7a3aeaef82e6230c9e823500d4a8a1214c726cf342cf9829d34fc7d"
+    },
+    "grilling": {
+      "source": "Ameyanagi/fleet",
+      "sourceType": "github",
+      "skillPath": "skills/grilling/SKILL.md",
+      "computedHash": "a16b2f661db6caf310d7e02dd0d069e597cb888873e210e66f641eae715c5f23"
+    },
+    "to-questionnaire": {
+      "source": "Ameyanagi/fleet",
+      "sourceType": "github",
+      "skillPath": "skills/to-questionnaire/SKILL.md",
+      "computedHash": "d8938509f3400d9977343e11e876fc6e1982b0b9c133a2f2e9d3d730a67a103e"
+    }
+  }
+}

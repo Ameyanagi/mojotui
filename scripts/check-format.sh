@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+format_roots=(mojotui tests)
+
+for optional_root in examples benchmarks; do
+  if [[ -d "$optional_root" ]]; then
+    format_roots+=("$optional_root")
+  fi
+done
+
+format_check_dir=$(mktemp -d "${TMPDIR:-/tmp}/mojotui-format-check.XXXXXX")
+cleanup() {
+  if [[ -n "${format_check_dir:-}" && -d "$format_check_dir" ]]; then
+    rm -rf -- "$format_check_dir"
+  fi
+}
+trap cleanup EXIT
+
+source_files=()
+formatted_files=()
+
+while IFS= read -r -d '' source_file; do
+  formatted_file="$format_check_dir/$source_file"
+  mkdir -p "$(dirname "$formatted_file")"
+  cp "$source_file" "$formatted_file"
+  source_files+=("$source_file")
+  formatted_files+=("$formatted_file")
+done < <(find "${format_roots[@]}" -type f -name '*.mojo' -print0)
+
+if [[ ${#source_files[@]} -eq 0 ]]; then
+  printf '%s\n' 'No Mojo source files found.' >&2
+  exit 1
+fi
+
+mojo format --quiet -l 88 "${formatted_files[@]}"
+
+status=0
+for index in "${!source_files[@]}"; do
+  if ! cmp --silent "${source_files[$index]}" "${formatted_files[$index]}"; then
+    printf '%s\n' "Formatting required: ${source_files[$index]}" >&2
+    diff -u "${source_files[$index]}" "${formatted_files[$index]}" || true
+    status=1
+  fi
+done
+
+if [[ $status -ne 0 ]]; then
+  printf '%s\n' 'Run `pixi run format` to apply Mojo formatting.' >&2
+  exit "$status"
+fi
+
+printf '%s\n' 'Mojo formatting check passed.'
