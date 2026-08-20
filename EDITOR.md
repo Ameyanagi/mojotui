@@ -57,6 +57,13 @@ line numbers, tabs, selections, cursors, and versioned highlight ranges.
 `HighlightState.apply` rejects a snapshot produced for an older document
 version.
 
+Use `Editor.render` when the caller owns mutable widget state and wants
+cursor-driven viewport changes persisted. Use `Editor.render_readonly` from an
+`Application.view` implementation: it derives a cursor-visible viewport in a
+small frame-local value, renders from the borrowed `EditorState`, and leaves
+the application model unchanged. Neither path copies the document or editor
+history.
+
 `TextInput` uses the same engine but strips line breaks from insert and paste
 commands. `TextArea` is a form wrapper around `Editor`.
 
@@ -72,6 +79,11 @@ bounded base64 payload to a terminal descriptor. Its `read()` method returns the
 last value written through that provider; it does not query the terminal for
 external clipboard contents. Applications that need native paste should supply
 another `Clipboard` implementation.
+
+The checked-in [`examples/editor.mojo`](examples/editor.mojo) composes these
+parts into a complete typed application. Its file adapter is synchronous, but
+the effect and message boundary is compatible with a future task-backed
+`RuntimeAdapter` without exposing runtime-specific types in the editor API.
 
 ## Measured baseline
 

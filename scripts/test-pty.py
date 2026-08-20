@@ -166,9 +166,57 @@ def run_split_descriptor_case(binary: Path) -> None:
         os.close(output_slave)
 
 
+def run_editor_case(binary: Path) -> None:
+    """Start the real editor host, quit through input, and verify restoration."""
+    master, slave = pty.openpty()
+    try:
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+        original = termios.tcgetattr(slave)
+        process = subprocess.Popen(
+            [str(binary)],
+            stdin=slave,
+            stdout=slave,
+            stderr=slave,
+            close_fds=True,
+        )
+        output = read_until(master, process, b"Ctrl-Q")
+        raw = termios.tcgetattr(slave)
+        if raw[3] & (termios.ICANON | termios.ECHO):
+            raise AssertionError("editor: terminal did not enter raw mode")
+
+        os.write(master, b"\x11")
+        deadline = time.monotonic() + READ_TIMEOUT_SECONDS
+        while process.poll() is None and time.monotonic() < deadline:
+            readable, _, _ = select.select([master], [], [], 0.1)
+            if readable:
+                try:
+                    output += os.read(master, 4096)
+                except OSError:
+                    break
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+            raise AssertionError(f"editor: child timed out; output={output!r}")
+        if process.returncode != 0:
+            raise AssertionError(
+                f"editor: expected success, got exit {process.returncode}"
+            )
+        if b"\x1b[?1049l" not in output:
+            raise AssertionError("editor: alternate screen was not restored")
+        restored = termios.tcgetattr(slave)
+        if comparable_attributes(restored) != comparable_attributes(original):
+            raise AssertionError("editor: terminal attributes were not restored")
+    finally:
+        os.close(master)
+        os.close(slave)
+
+
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: test-pty.py PATH_TO_SESSION_PROBE", file=sys.stderr)
+    if len(sys.argv) not in (2, 3):
+        print(
+            "usage: test-pty.py PATH_TO_SESSION_PROBE [PATH_TO_EDITOR]",
+            file=sys.stderr,
+        )
         return 2
     binary = Path(sys.argv[1]).resolve()
     for mode in ("normal", "implicit", "error", "host"):
@@ -176,9 +224,13 @@ def main() -> int:
     run_case(binary, "control-c", send_control_c=True)
     run_case(binary, "resize", resize=True)
     run_split_descriptor_case(binary)
+    if len(sys.argv) == 3:
+        run_editor_case(Path(sys.argv[2]).resolve())
     print(
         "PTY lifecycle tests passed "
-        "(normal, implicit, error, host, control-c, resize, split descriptors)."
+        "(normal, implicit, error, host, control-c, resize, split descriptors"
+        + (", editor" if len(sys.argv) == 3 else "")
+        + ")."
     )
     return 0
 

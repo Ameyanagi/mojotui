@@ -59,6 +59,24 @@ struct EditorState(Movable):
         self.top_visual_row = 0
 
 
+struct _EditorViewport(Copyable):
+    """Small render-local viewport, separate from the document engine."""
+
+    var top_line: Int
+    var top_visual_row: Int
+    var horizontal_offset: Int
+
+    def __init__(
+        out self,
+        top_line: Int,
+        top_visual_row: Int,
+        horizontal_offset: Int,
+    ):
+        self.top_line = top_line
+        self.top_visual_row = top_visual_row
+        self.horizontal_offset = horizontal_offset
+
+
 def _digits(value: Int) -> Int:
     var remaining = max(value, 1)
     var count = 1
@@ -258,59 +276,60 @@ struct Editor(Copyable, StatefulWidget):
         self,
         content_width: Int,
         content_height: Int,
-        mut state: EditorState,
+        engine: EditorEngine,
+        mut viewport: _EditorViewport,
     ) raises:
         if content_width <= 0 or content_height <= 0:
             return
-        var primary = state.engine.selections.primary_selection()
-        var position = state.engine.document.position_at(primary.head)
+        var primary = engine.selections.primary_selection()
+        var position = engine.document.position_at(primary.head)
         if self.wrap_mode == WrapMode.NONE:
-            if position.line < state.top_line:
-                state.top_line = position.line
-            elif position.line >= state.top_line + content_height:
-                state.top_line = position.line - content_height + 1
+            if position.line < viewport.top_line:
+                viewport.top_line = position.line
+            elif position.line >= viewport.top_line + content_height:
+                viewport.top_line = position.line - content_height + 1
             var column = display_column(
-                state.engine.document,
+                engine.document,
                 primary.head,
                 self.tab_width,
                 self.ambiguous_is_wide,
             )
-            if column < state.horizontal_offset:
-                state.horizontal_offset = column
-            elif column >= state.horizontal_offset + content_width:
-                state.horizontal_offset = column - content_width + 1
-            state.top_visual_row = 0
+            if column < viewport.horizontal_offset:
+                viewport.horizontal_offset = column
+            elif column >= viewport.horizontal_offset + content_width:
+                viewport.horizontal_offset = column - content_width + 1
+            viewport.top_visual_row = 0
             return
 
-        state.horizontal_offset = 0
+        viewport.horizontal_offset = 0
         var column = display_column(
-            state.engine.document,
+            engine.document,
             primary.head,
             self.tab_width,
             self.ambiguous_is_wide,
         )
         var cursor_row = column // content_width
-        var before_top = position.line < state.top_line or (
-            position.line == state.top_line and cursor_row < state.top_visual_row
+        var before_top = position.line < viewport.top_line or (
+            position.line == viewport.top_line and cursor_row < viewport.top_visual_row
         )
         if before_top:
-            state.top_line = position.line
-            state.top_visual_row = cursor_row
+            viewport.top_line = position.line
+            viewport.top_visual_row = cursor_row
             return
 
-        var distance = -state.top_visual_row
-        for line in range(state.top_line, position.line):
-            var text = state.engine.document.line_text(line)
+        var distance = -viewport.top_visual_row
+        for line in range(viewport.top_line, position.line):
+            var text = engine.document.line_text(line)
             distance += self._wrap_rows(text^, content_width)
             if distance >= content_height:
                 break
-        if position.line == state.top_line:
-            distance = cursor_row - state.top_visual_row
+        if position.line == viewport.top_line:
+            distance = cursor_row - viewport.top_visual_row
         else:
             distance += cursor_row
         if distance >= content_height:
-            state.top_line = position.line
-            state.top_visual_row = max(cursor_row - content_height + 1, 0)
+            viewport.top_line = position.line
+            viewport.top_visual_row = max(cursor_row - content_height + 1, 0)
 
     def _render_line_number(
         self,
@@ -332,7 +351,14 @@ struct Editor(Copyable, StatefulWidget):
                 Cell(String(label[byte=index]), style=self.line_number_style),
             )
 
-    def render(self, area: Rect, mut buffer: Buffer, mut state: EditorState) raises:
+    def _render_with_viewport(
+        self,
+        area: Rect,
+        mut buffer: Buffer,
+        engine: EditorEngine,
+        highlights: HighlightState,
+        mut viewport: _EditorViewport,
+    ) raises:
         var visible = buffer.area.intersection(area)
         if visible.is_empty():
             return
@@ -344,25 +370,23 @@ struct Editor(Copyable, StatefulWidget):
         if content.is_empty():
             return
 
-        state.top_line = min(
-            max(state.top_line, 0), state.engine.document.line_count() - 1
+        viewport.top_line = min(
+            max(viewport.top_line, 0), engine.document.line_count() - 1
         )
         var gutter_width = self._gutter_width(
-            state.engine.document.line_count(), content.width
+            engine.document.line_count(), content.width
         )
         var text_width = content.width - gutter_width
-        self._ensure_cursor_visible(text_width, content.height, state)
+        self._ensure_cursor_visible(text_width, content.height, engine, viewport)
         if text_width <= 0:
             return
 
         var y = content.y
-        var logical_line = state.top_line
-        var initial_visual_row = state.top_visual_row
-        while (
-            y < content.bottom() and logical_line < state.engine.document.line_count()
-        ):
-            var text = state.engine.document.line_text(logical_line)
-            var line_start = state.engine.document.line_start(logical_line)
+        var logical_line = viewport.top_line
+        var initial_visual_row = viewport.top_visual_row
+        while y < content.bottom() and logical_line < engine.document.line_count():
+            var text = engine.document.line_text(logical_line)
+            var line_start = engine.document.line_start(logical_line)
             var rows = 1
             if self.wrap_mode == WrapMode.SOFT:
                 rows = self._wrap_rows(text, text_width)
@@ -379,7 +403,7 @@ struct Editor(Copyable, StatefulWidget):
                     )
                 var column_start = (
                     visual_row * text_width if self.wrap_mode
-                    == WrapMode.SOFT else state.horizontal_offset
+                    == WrapMode.SOFT else viewport.horizontal_offset
                 )
                 _render_line_window(
                     text,
@@ -387,15 +411,53 @@ struct Editor(Copyable, StatefulWidget):
                     column_start,
                     Rect(content.x + gutter_width, y, text_width, 1),
                     buffer,
-                    state.engine.selections,
+                    engine.selections,
                     self.style,
                     self.selection_style,
                     self.cursor_style,
-                    state.highlights,
-                    state.engine.document.version,
+                    highlights,
+                    engine.document.version,
                     self.tab_width,
                     self.ambiguous_is_wide,
                 )
                 y += 1
             logical_line += 1
             initial_visual_row = 0
+
+    def render(self, area: Rect, mut buffer: Buffer, mut state: EditorState) raises:
+        """Render and persist any cursor-driven viewport adjustment."""
+        var viewport = _EditorViewport(
+            state.top_line,
+            state.top_visual_row,
+            state.horizontal_offset,
+        )
+        self._render_with_viewport(
+            area,
+            buffer,
+            state.engine,
+            state.highlights,
+            viewport,
+        )
+        state.top_line = viewport.top_line
+        state.top_visual_row = viewport.top_visual_row
+        state.horizontal_offset = viewport.horizontal_offset
+
+    def render_readonly(
+        self,
+        area: Rect,
+        mut buffer: Buffer,
+        state: EditorState,
+    ) raises:
+        """Render from borrowed application state without changing its viewport."""
+        var viewport = _EditorViewport(
+            state.top_line,
+            state.top_visual_row,
+            state.horizontal_offset,
+        )
+        self._render_with_viewport(
+            area,
+            buffer,
+            state.engine,
+            state.highlights,
+            viewport,
+        )

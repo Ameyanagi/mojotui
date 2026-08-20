@@ -65,6 +65,15 @@ integration, and migration documentation are covered by the locked suite.
 Stages I and J retain the existing extension and widget/performance
 commitments; the new color work does not replace or silently complete them.
 
+The editor application dogfood milestone is implemented locally. A complete
+path-backed example now drives the non-copyable editor model through typed
+messages and file effects. The integration exposed and corrected a rendering
+boundary mismatch: `Application.view` remains read-only, while
+`Editor.render_readonly` computes cursor visibility in frame-local viewport
+data without copying the document or mutating the model. Focused headless and
+PTY coverage gates editing, paste, history, file round trips, startup, exit,
+and terminal restoration.
+
 ## Product scope
 
 The project will provide these separately usable layers:
@@ -631,6 +640,27 @@ rendering remains proportional to the visible viewport, and retained render
 optimizations have checked-in semantic coverage plus reproducible before/after
 benchmarks on the pinned nightly.
 
+#### Editor application dogfood milestone
+
+- Add a borrowed-state editor rendering path compatible with the pure
+  `Application.view` contract while retaining persistent viewport updates for
+  callers of the mutable `StatefulWidget` path.
+- Build a full-screen example around one non-copyable application model, a
+  closed input/completion message variant, the default semantic keymap,
+  transactional paste, history, and an application-owned clipboard.
+- Represent load and save as typed effects interpreted by `RuntimeAdapter`.
+  Preserve BOM and line endings, check external metadata, perform atomic
+  replacement, and carry document versions through save completions.
+- Keep the example adapter synchronous and replaceable. Do not bind the public
+  editor or application API to a private or unstable task-runtime type.
+- Add focused headless tests, build the executable in the locked suite, run it
+  through a PTY, and document both interactive and deterministic test paths.
+
+Exit: another developer can run a real editor with one Pixi command, inspect a
+strictly typed application and effect boundary, edit and save a UTF-8 file,
+and reproduce its headless and terminal-lifecycle tests without unsafe code
+outside the existing audited platform layer.
+
 ## Delivery phases
 
 ### Phase 0: feasibility
@@ -763,6 +793,8 @@ Initial performance targets:
   descriptor/inline resize correctness, and inherited style composition
 - `0.6.2`: explicit terminal capabilities, portable light/dark themes, and
   deterministic color-profile degradation
+- `0.6.3`: interactive editor example, borrowed-state editor rendering, typed
+  file effects, and editor PTY coverage
 - `0.7`: package boundaries, public symbols, extension testing, builders, and
   reproducible Ratatui fixture provenance
 - `0.8`: deeper existing widgets, BarChart, Chart, and benchmark-driven visible
@@ -782,10 +814,11 @@ documentation, terminal support matrix, and known-limitations page.
 The 2026-08-20 macOS arm64 run used Mojo
 `1.1.0.dev2026081813` and Pixi `0.76.2`.
 
-- `pixi run check`: 214 Mojo tests passed across 28 test modules; 20
+- `pixi run check`: 217 Mojo tests passed across 29 test modules; 20
   compile-fail fixtures also enforced migrated nominal API boundaries.
-- Both examples built, and PTY tests passed normal close, implicit destruction,
-  raised error, hosted inline application, Ctrl-C, and resize cases.
+- All three examples built, and PTY tests passed normal close, implicit
+  destruction, raised error, hosted inline application, Ctrl-C, resize, and
+  interactive editor startup/quit cases.
 - Formatting passed; the package precompiled with `--Werror`.
 - The strict-type policy found no obsolete `fn` declarations, `AnyType`, or
   `PythonObject` use in the library.
