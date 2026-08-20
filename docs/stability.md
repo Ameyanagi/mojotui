@@ -4,6 +4,24 @@ Mojotui is pre-1.0 and pins an exact Mojo nightly. These tiers describe how the
 project manages source changes within that constraint; they are not a 1.0
 compatibility promise.
 
+## v0.1 release and distribution
+
+`v0.1.0` is the first public release target. It will ship one independently
+versioned `mojotui` distribution containing supported public subpackages and a
+top-level convenience import. The subpackages are dependency boundaries, not
+separately versioned artifacts.
+
+The tagged source archive is canonical. The release uses Mojo
+`1.1.0.dev2026081813`, pinned exactly in `pixi.toml` and resolved for every
+supported target in `pixi.lock`. A precompiled package is compatible only with
+that compiler and may be published only after fresh-prefix consumer tests pass
+on Linux x86-64, Linux ARM64, and macOS ARM64. A compiler upgrade requires a
+new tested release and migration notes when it changes source behavior.
+
+Stage I package boundaries, public symbols, extension tests, builders, fixture
+provenance, and packaging gates are part of `v0.1.0`. Stage J widget expansion
+and measured performance work begins after that release.
+
 ## Supported foundation
 
 The public APIs in `core`, `text`, `widgets`, and `terminal` are the supported

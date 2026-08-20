@@ -782,28 +782,40 @@ Initial performance targets:
 
 ## Release plan
 
-- `0.1`: rendering core, terminal backend, initial widgets, dashboard
-- `0.2`: application framework and reactor
-- `0.3`: editor engine and editor widget
-- `0.4`: forms, file services, and the runtime-neutral adapter boundary
-- `0.5`: frame transaction, terminal-owned renderer, nominal types, style
-  composition, and layout compatibility
-- `0.6`: deeper widgets, application host, and documented API stability tiers
-- `0.6.1`: lossless host backpressure, deadline scheduling, bounded turns,
-  descriptor/inline resize correctness, and inherited style composition
-- `0.6.2`: explicit terminal capabilities, portable light/dark themes, and
-  deterministic color-profile degradation
-- `0.6.3`: interactive editor example, borrowed-state editor rendering, typed
-  file effects, and editor PTY coverage
-- `0.7`: package boundaries, public symbols, extension testing, builders, and
-  reproducible Ratatui fixture provenance
-- `0.8`: deeper existing widgets, BarChart, Chart, and benchmark-driven visible
-  text/collection rendering
+No public tag has been created. Earlier planning used release-like labels for
+capability checkpoints; they did not identify published artifacts:
 
-Pre-1.0 minor releases may make breaking changes. Each release pins and names an
-exact tested Mojo nightly and includes migration notes. Source packages are the
-initial distribution format; precompiled packages wait for dependable compiler
-compatibility.
+| Earlier label | Completed, unpublished capability |
+| --- | --- |
+| `0.1` | Rendering core, terminal backend, initial widgets, and dashboard |
+| `0.2` | Application framework and reactor |
+| `0.3` | Editor engine and editor widget |
+| `0.4` | Forms, file services, and runtime-neutral adapter boundary |
+| `0.5` | Frame transactions, terminal-owned rendering, nominal types, style composition, and layout compatibility |
+| `0.6` | Deeper widgets, application host, and API stability tiers |
+| `0.6.1` | Lossless host backpressure, bounded scheduling, resize correctness, and inherited style composition |
+| `0.6.2` | Explicit terminal capabilities, portable themes, and deterministic color degradation |
+| `0.6.3` | Interactive editor example, borrowed-state rendering, typed file effects, and editor PTY coverage |
+
+The earlier `0.7` and `0.8` labels referred to the unstarted Stage I and Stage
+J work. The public targets below replace those planning labels.
+
+`v0.1.0` is the first public release target. It includes all completed work
+above plus Stage I: dependency-directed public subpackages, validated symbols,
+headless extension testing, consistent builders, reproducible Ratatui fixtures,
+and installability gates. The distribution is one independently versioned
+`mojotui` library containing public subpackages and a top-level convenience
+package; those subpackages are not separate release artifacts.
+
+Stage J follows `v0.1.0`. It covers deeper existing widgets, BarChart, Chart,
+and benchmark-driven visible text and collection rendering. Canvas, GPU, and
+SIMD work remain deferred by the Stage J gates.
+
+Pre-1.0 minor releases may make breaking changes. Each release pins and names
+one exact tested Mojo nightly and includes migration notes. The tagged source
+archive is canonical. A precompiled package may be published only after its
+recipe pins the compiler compatibility from `pixi.toml` and `pixi.lock` and
+passes fresh-prefix consumer tests on every supported target.
 
 Before the first public release, provide a quick start, architecture overview,
 dashboard tutorial, editor example, custom-widget guide, backend guide, API

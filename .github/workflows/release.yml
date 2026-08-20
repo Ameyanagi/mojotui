@@ -1,16 +1,39 @@
-name: Release
+name: Release v0.1 source distribution
 
 on:
   push:
     tags:
-      - "v*"
+      - "v0.1.*"
 
 permissions:
   contents: read
 
 jobs:
+  verify:
+    name: Verify v0.1 release contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Match tag and pinned compiler to workspace metadata
+        shell: bash
+        run: |
+          package_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pixi.toml)"
+          mojo_requirement="$(sed -n 's/^mojo = "\([^"]*\)"/\1/p' pixi.toml)"
+          expected_tag="v${package_version}"
+
+          if [[ -z "${package_version}" || "${GITHUB_REF_NAME}" != "${expected_tag}" ]]; then
+            echo "Expected tag ${expected_tag}, received ${GITHUB_REF_NAME}." >&2
+            exit 1
+          fi
+
+          if [[ ! "${mojo_requirement}" =~ ^==[[:alnum:].]+$ ]]; then
+            echo "Release builds require one exact Mojo compiler pin." >&2
+            exit 1
+          fi
+
   check:
-    name: Check ${{ matrix.name }}
+    name: Check v0.1 on ${{ matrix.name }}
+    needs: verify
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
