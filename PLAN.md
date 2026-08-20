@@ -7,8 +7,8 @@ borrows Ratatui's immediate-mode rendering model and familiar concepts, but it
 does not promise Rust or Ratatui API compatibility. The public API should feel
 native to Mojo and evolve with the language before 1.0.
 
-The first supported platforms are macOS and Linux on x86-64 or ARM64 where the
-pinned compiler package is available. The project targets Mojo
+The first supported platforms are macOS ARM64, Linux x86-64, and Linux ARM64,
+where the pinned compiler package is available. The project targets Mojo
 developers building native terminal applications. Python and `ncurses` are not
 runtime dependencies.
 
