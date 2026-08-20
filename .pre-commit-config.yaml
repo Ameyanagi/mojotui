@@ -11,6 +11,12 @@ repos:
       - id: check-toml
   - repo: local
     hooks:
+      - id: mblack
+        name: mojo format (mblack)
+        entry: mblack
+        language: python
+        additional_dependencies: ['mblack==26.5.0']
+        files: '\.mojo$'
       - id: format-check
         name: mojo format check
         entry: pixi run format-check

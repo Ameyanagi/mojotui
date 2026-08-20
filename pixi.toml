@@ -9,13 +9,14 @@ version = "0.1.0"
 bench = { cmd = "mojo run -I . benchmarks/render.mojo", description = "Benchmark full, changed, and unchanged 80x24 ANSI frames" }
 bench-editor = { cmd = "mojo run -I . benchmarks/editor.mojo", description = "Benchmark 10 MiB editor edits, history, and viewport rendering" }
 check = { depends-on = ["test", "lint"], description = "Run the complete non-mutating validation suite" }
-compiler-lint = { cmd = "mojo precompile --Werror mojotui -o .pixi/mojotui-lint.mojoc", description = "Compile the package with warnings treated as errors" }
+compiler-lint = { cmd = "mojo precompile --Werror --warn-on-unstable-apis mojotui -o .pixi/mojotui-lint.mojoc", description = "Compile the package with warnings treated as errors" }
 dashboard = { cmd = "mojo run -I . examples/dashboard.mojo", description = "Run the interactive system-monitor dashboard example" }
 editor = { cmd = "mojo run -I . examples/editor.mojo", description = "Run the interactive text editor; pass a file path after --" }
 format = { cmd = "bash scripts/format.sh", description = "Format Mojo source files in place" }
 format-check = { cmd = "bash scripts/check-format.sh", description = "Verify Mojo formatting without modifying source files" }
 generate-unicode = { cmd = "python scripts/generate-unicode-width.py", description = "Regenerate pinned Unicode width tables" }
 lint = { depends-on = ["format-check", "type-check", "unsafe-check"], description = "Run formatting, strict-type, and unsafe-boundary checks" }
+package = { cmd = "rattler-build build --recipe conda.recipe/recipe.yaml -c conda-forge -c https://conda.modular.com/max -c https://repo.prefix.dev/modular-community", description = "Build the local Conda package" }
 precompile = { cmd = "mojo precompile mojotui -o .pixi/mojotui-check.mojoc", description = "Precompile the mojotui package" }
 test = { cmd = "bash scripts/test.sh", description = "Run all Mojo TestSuite files" }
 type-check = { depends-on = ["type-policy-check", "compiler-lint"], description = "Enforce static API policy and compile with warnings as errors" }
@@ -24,4 +25,5 @@ unsafe-check = { cmd = "bash scripts/check-unsafe.sh", description = "Reject uns
 
 [dependencies]
 mojo = "==1.0.0"
+rattler-build = ">=0.74,<0.75"
 ripgrep = ">=14,<16"
