@@ -2,6 +2,9 @@
 .pixi/*
 !.pixi/config.toml
 
+# rattler-build artifacts
+output/
+
 # Local AI agent tooling and instructions
 /AGENTS.md
 /CLAUDE.md
