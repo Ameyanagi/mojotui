@@ -2,21 +2,21 @@
 
 from std.collections import List, Optional
 
-from ..event.input import KeyEvent
+from ..event.input import KeyCode, KeyEvent, KeyModifiers
 
 
 struct KeyChord(Copyable):
     """The comparable portion of a parsed key event."""
 
-    var code: Int
+    var code: KeyCode
     var text: String
-    var modifiers: Int
+    var modifiers: KeyModifiers
 
     def __init__(
         out self,
-        code: Int,
+        code: KeyCode,
         var text: String = "",
-        modifiers: Int = 0,
+        modifiers: KeyModifiers = KeyModifiers.NONE,
     ):
         self.code = code
         self.text = text^
@@ -27,7 +27,9 @@ struct KeyChord(Copyable):
         return Self(event.code, event.text, event.modifiers)
 
     @staticmethod
-    def character(var text: String, modifiers: Int = 0) -> Self:
+    def character(
+        var text: String, modifiers: KeyModifiers = KeyModifiers.NONE
+    ) -> Self:
         return Self(KeyEvent.CHARACTER, text^, modifiers)
 
     def equals(self, other: Self) -> Bool:

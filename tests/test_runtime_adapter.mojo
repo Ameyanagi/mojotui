@@ -2,11 +2,16 @@ from std.collections import List
 from std.testing import TestSuite, assert_equal, assert_false, assert_true
 
 from mojotui import (
+    Application,
+    Buffer,
     Command,
+    InitResult,
+    Rect,
     RuntimeAdapter,
     RuntimeScope,
     Subscription,
     SubscriptionDelta,
+    UpdateResult,
 )
 
 
@@ -24,9 +29,33 @@ struct AdapterMessage(Copyable):
         self.value = value
 
 
-struct RecordingAdapter(RuntimeAdapter):
-    comptime Effect = AdapterEffect
+struct AdapterModel(Copyable):
+    def __init__(out self):
+        pass
+
+
+struct AdapterApplication(Application, Copyable):
+    comptime Model = AdapterModel
     comptime Message = AdapterMessage
+    comptime Effect = AdapterEffect
+
+    def __init__(out self):
+        pass
+
+    def init(mut self) raises -> InitResult[Self.Model, Self.Effect]:
+        return InitResult[Self.Model, Self.Effect].ready(AdapterModel())
+
+    def update(
+        mut self, mut model: Self.Model, var message: Self.Message
+    ) raises -> UpdateResult[Self.Effect]:
+        return UpdateResult[Self.Effect].unchanged()
+
+    def view(self, model: Self.Model, area: Rect, mut buffer: Buffer) raises:
+        pass
+
+
+struct RecordingAdapter(RuntimeAdapter):
+    comptime ApplicationType = AdapterApplication
 
     var executed: List[Int]
     var started: List[String]
@@ -41,17 +70,19 @@ struct RecordingAdapter(RuntimeAdapter):
         self.pending = List[AdapterMessage]()
         self.close_count = 0
 
-    def execute(mut self, var command: Command[Self.Effect]) raises:
+    def execute(mut self, var command: Command[Self.ApplicationType.Effect]) raises:
         self.executed.append(command.effect.value)
         self.pending.append(AdapterMessage(command.effect.value * 2))
 
-    def start(mut self, var subscription: Subscription[Self.Effect]) raises:
+    def start(
+        mut self, var subscription: Subscription[Self.ApplicationType.Effect]
+    ) raises:
         self.started.append(subscription.id)
 
     def stop(mut self, id: StringSlice) raises:
         self.stopped.append(String(id))
 
-    def take_messages(mut self) raises -> List[Self.Message]:
+    def take_messages(mut self) raises -> List[Self.ApplicationType.Message]:
         var result = self.pending^
         self.pending = List[AdapterMessage]()
         return result^

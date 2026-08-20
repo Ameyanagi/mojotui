@@ -20,13 +20,15 @@ terminal bytes -> InputParser -> typed events -> PosixReactor
                                                 v
                                          typed messages
 
-model -> view -> Buffer -> backend diff -> terminal
+model -> view -> Frame -> Terminal diff -> FramePatch -> backend -> terminal
 ```
 
 ## Package direction
 
-`core` defines geometry, style, cells, buffers, layout, and widget traits.
-`text` adds grapheme width and rich text. Widgets depend on those two packages.
+`core` defines geometry, style, cells, buffers, layout, and widget traits. It
+also defines pure terminal capability values and adaptive colors without
+reading the environment. `text` adds grapheme width and rich text. Widgets
+depend on those two packages.
 
 `terminal` owns presentation, while `event` parses input and polls descriptors.
 Both packages call the private POSIX boundary where the standard library lacks
@@ -42,9 +44,11 @@ and `TextArea` on the editor rather than maintaining a second text model.
 
 ## Ownership
 
-One application loop owns the model. A render pass borrows a buffer and ends
-before terminal presentation. Stateful widgets receive their state from the
-caller. Background work returns typed messages and cannot borrow the model.
+One application loop owns the model. `Terminal.begin_frame()` prepares a blank
+frame against one observed viewport. A render pass borrows that frame's buffer
+and ends before `Terminal.finish_frame()` presents it. Stateful widgets receive
+their state from the caller. Background work returns typed messages and cannot
+borrow the model.
 
 Backends and applications use compile-time trait constraints. Mojotui does not
 store heterogeneous runtime trait objects. A closed `Variant` is appropriate
@@ -53,14 +57,32 @@ when an application needs a finite set of runtime alternatives.
 ## Rendering
 
 A `Buffer` is a dense row-major grid. Each cell stores one grapheme, its terminal
-width, style, and continuation state for a two-column glyph. All writes clip to
-the buffer rectangle. Widgets draw in call order, so a later widget can cover an
-earlier one.
+width, resolved style, and continuation state for a two-column glyph. Rich-text
+spans and state highlights carry compositional `StylePatch` values that resolve
+over the widget base at render time. All writes clip to the buffer rectangle.
+Widgets draw in call order, so a later widget can cover an earlier one.
 
-`AnsiBackend` compares the previous frame with the current frame and writes
-changed cells. `InlineBackend` uses the same cells but addresses a fixed region
-relative to the cursor below it. `HeadlessBackend` keeps the last frame in
-memory for tests.
+`Layout` uses a bounded one-dimensional allocator with Ratatui-compatible
+non-legacy constraint priorities, margins, positive spacing, and flex
+distribution. It does not embed a general Cassowary solver or a global cache;
+the fixture contract and exclusions are recorded in
+[docs/layout-compatibility.md](docs/layout-compatibility.md).
+
+`Terminal` owns the last successfully presented frame, computes row-major cell
+changes, tracks cursor intent, and commits history only after presentation
+succeeds. Sequential frames reuse two swapped buffers rather than copying the
+complete grid. `AnsiBackend` writes changes with absolute positions.
+`InlineBackend` addresses the same patch relative to the cursor below its
+fixed-height, terminal-width region. `HeadlessBackend` applies patches in memory
+for tests. Dynamic backends
+report their current viewport before each transaction, so resize handling does
+not leak through the backend field.
+
+Adaptive colors are resolved before rendering from an explicit
+`TerminalCapabilities` value. Buffers store only resolved `Color`, keeping
+frame equality and headless snapshots independent of backend policy. The
+terminal package may detect conservative environment hints when an ANSI
+backend is constructed; detection does not occur inside `view` or a widget.
 
 ## Terminal boundary
 
@@ -76,6 +98,16 @@ pointer and FFI operations elsewhere. See
 
 `ApplicationRuntime` processes one message at a time. It returns commands to the
 host and reconciles desired subscriptions by stable ID and revision.
-`RuntimeScope` forwards that work to a concrete `RuntimeAdapter`, whose associated
-types fix the effect and message types at compile time. Runtime-specific futures,
-channels, and task handles stay inside the adapter.
+`RuntimeScope` forwards that work to a concrete `RuntimeAdapter`. The adapter's
+associated `ApplicationType` fixes both effect and message types at compile
+time. Runtime-specific futures, channels, and task handles stay inside the
+adapter.
+
+`ApplicationHost` combines the sequential runtime, adapter scope, and terminal
+transactions. `TerminalApplicationHost` adds ownership of `TerminalSession`,
+`PosixReactor`, and `InputParser`, translates input/tick/resize observations
+through optional application hooks, and closes every owned resource on normal
+exit or error. `HostSchedule` derives polling from independent tick, Escape,
+frame, and adapter deadlines. A retained adapter backlog and finite message
+budget keep turns lossless and bounded. It coordinates task work but never
+executes it itself.

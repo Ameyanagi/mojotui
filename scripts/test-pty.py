@@ -83,12 +83,19 @@ def run_case(
             os.write(master, b"x")
 
         expected_success = mode != "error"
-        try:
-            exit_code = process.wait(timeout=READ_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired:
+        deadline = time.monotonic() + READ_TIMEOUT_SECONDS
+        while process.poll() is None and time.monotonic() < deadline:
+            readable, _, _ = select.select([master], [], [], 0.1)
+            if readable:
+                try:
+                    output += os.read(master, 4096)
+                except OSError:
+                    break
+        if process.poll() is None:
             process.kill()
             process.wait()
             raise AssertionError(f"{mode}: child timed out; output={output!r}") from None
+        exit_code = process.returncode
 
         restored = termios.tcgetattr(slave)
         if comparable_attributes(restored) != comparable_attributes(original):
@@ -105,18 +112,73 @@ def run_case(
         os.close(slave)
 
 
+def run_split_descriptor_case(binary: Path) -> None:
+    input_master, input_slave = pty.openpty()
+    output_master, output_slave = pty.openpty()
+    try:
+        fcntl.ioctl(
+            input_slave,
+            termios.TIOCSWINSZ,
+            struct.pack("HHHH", 24, 80, 0, 0),
+        )
+        fcntl.ioctl(
+            output_slave,
+            termios.TIOCSWINSZ,
+            struct.pack("HHHH", 40, 100, 0, 0),
+        )
+        original_input = termios.tcgetattr(input_slave)
+        process = subprocess.Popen(
+            [str(binary), "split-descriptors"],
+            stdin=input_slave,
+            stdout=output_slave,
+            stderr=output_slave,
+            close_fds=True,
+        )
+        output = read_until(output_master, process, b"READY")
+        raw_input = termios.tcgetattr(input_slave)
+        if raw_input[3] & (termios.ICANON | termios.ECHO):
+            raise AssertionError("split-descriptors: input did not enter raw mode")
+
+        fcntl.ioctl(
+            output_slave,
+            termios.TIOCSWINSZ,
+            struct.pack("HHHH", 50, 120, 0, 0),
+        )
+        output += read_until(output_master, process, b"RESIZED")
+        process.wait(timeout=READ_TIMEOUT_SECONDS)
+        if process.returncode != 0:
+            raise AssertionError(
+                "split-descriptors: expected success, "
+                f"got exit {process.returncode}; output={output!r}"
+            )
+
+        restored_input = termios.tcgetattr(input_slave)
+        if comparable_attributes(restored_input) != comparable_attributes(
+            original_input
+        ):
+            raise AssertionError(
+                "split-descriptors: input attributes were not restored"
+            )
+    finally:
+        os.close(input_master)
+        os.close(input_slave)
+        os.close(output_master)
+        os.close(output_slave)
+
+
 def main() -> int:
     if len(sys.argv) != 2:
         print("usage: test-pty.py PATH_TO_SESSION_PROBE", file=sys.stderr)
         return 2
     binary = Path(sys.argv[1]).resolve()
-    for mode in ("normal", "implicit", "error"):
+    for mode in ("normal", "implicit", "error", "host"):
         run_case(binary, mode)
     run_case(binary, "control-c", send_control_c=True)
     run_case(binary, "resize", resize=True)
+    run_split_descriptor_case(binary)
     print(
         "PTY lifecycle tests passed "
-        "(normal, implicit, error, control-c, resize)."
+        "(normal, implicit, error, host, control-c, resize, split descriptors)."
     )
     return 0
 

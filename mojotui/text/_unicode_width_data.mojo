@@ -8,6 +8,8 @@
 #   d62e5bab70ca74f099343f71224fa051cb1fdd61a1ab45c0488c44cfc0b6102e  DerivedGeneralCategory.txt
 # - https://www.unicode.org/Public/17.0.0/ucd/emoji/emoji-data.txt
 #   2cb2bb9455cda83e8481541ecf5b6dfda66a3bb89efa3fa7c5297eccf607b72b  emoji-data.txt
+# - https://www.unicode.org/Public/17.0.0/ucd/PropList.txt
+#   130dcddcaadaf071008bdfce1e7743e04fdfbc910886f017d9f9ac931d8c64dd  PropList.txt
 
 
 def unicode_data_version() -> String:
@@ -3353,6 +3355,52 @@ def is_emoji(value: Int) -> Bool:
                         return True
                     return True
                 return True
+            return True
+        return True
+    return True
+
+
+def is_whitespace(value: Int) -> Bool:
+    if value < 0:
+        return False
+    if value < 0x2000:
+        if value < 0x85:
+            if value < 0x20:
+                if value < 0x9:
+                    return False
+                if value > 0xD:
+                    return False
+                return True
+            if value > 0x20:
+                return False
+            return True
+        if value > 0x85:
+            if value < 0x1680:
+                if value < 0xA0:
+                    return False
+                if value > 0xA0:
+                    return False
+                return True
+            if value > 0x1680:
+                return False
+            return True
+        return True
+    if value > 0x200A:
+        if value < 0x205F:
+            if value < 0x202F:
+                if value < 0x2028:
+                    return False
+                if value > 0x2029:
+                    return False
+                return True
+            if value > 0x202F:
+                return False
+            return True
+        if value > 0x205F:
+            if value < 0x3000:
+                return False
+            if value > 0x3000:
+                return False
             return True
         return True
     return True

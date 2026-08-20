@@ -24,6 +24,47 @@ on hosted macOS ARM64, Linux ARM64, and Linux x86-64 runners. Local macOS and
 Linux ARM64 validation also covers PTY lifecycle, polling, restoration,
 Unicode, static-generic APIs, and the unsafe boundary.
 
+API modernization is now active. Ratatui `0.30.2` is the behavioral reference
+for shared rendering concepts, not a source-compatibility target. The current
+implementation proves feasibility, but its whole-buffer backend contract,
+manual render loop, raw integer discriminants, resolved-only styles, and
+order-based layout semantics must be corrected before the public core API is
+treated as stable.
+
+Stage A is implemented locally: `Terminal` now owns two reusable buffers,
+prepares stable `Frame` transactions, centralizes changed-cell patches,
+autoresizes, carries cursor intent, and commits only successful presentations.
+The application runtime and dashboard use that path. Stage B is implemented
+locally: public event, editor, layout, queue, style, and border semantic values
+are nominal types, and absence uses `Optional` rather than public sentinels.
+Eighteen compile-fail fixtures guard those boundaries. Stage C is implemented:
+composable style patches, underline colors, safe buffer and rich-text
+conveniences, explicit overflow, and directly renderable text values are in
+place. Stage D is implemented with Ratatui `0.30.2` fixtures, semantic
+constraint priorities, margins, and all six non-legacy flex modes. Stage E is
+implemented with word-wrapped/scrolled paragraphs, deeper blocks, multiline
+lists and tables, selection policies, footers, and `Fill`; chart and canvas
+families remain deliberately deferred. Stage F is implemented with startup
+commands, default subscriptions, nominal exit control, adapter/application type
+binding, embedded and POSIX terminal hosts, dashboard migration, PTY lifecycle
+coverage, and documented API stability tiers.
+
+Stage G is implemented locally on the pinned Mojo 1.1 nightly. Adapter batches
+are retained losslessly across queue pressure, host turns have a finite message
+budget, subscriptions reconcile after each batch, and `HostSchedule` separates
+tick, Escape, frame, and adapter deadlines. Tick and resize messages coalesce
+by stable key. Resize queries use the output descriptor, inline width follows
+the terminal, and a split-descriptor PTY test covers that path. Rich-text spans
+and selection states now carry `StylePatch`, while cells retain resolved
+`Style`. Gauges use validated `Ratio`, scrollbars use validated symbol pairs,
+and wrapping uses checksum-pinned Unicode 17 whitespace data. Stage H is also
+implemented locally: nominal capabilities, explicit profile fallbacks,
+light/dark/unknown adaptive colors, conservative environment detection,
+backend and terminal capability reporting, portable ANSI-16 output, dashboard
+integration, and migration documentation are covered by the locked suite.
+Stages I and J retain the existing extension and widget/performance
+commitments; the new color work does not replace or silently complete them.
+
 ## Product scope
 
 The project will provide these separately usable layers:
@@ -42,14 +83,17 @@ will not implement a competing general-purpose async executor.
 
 ### Initial non-goals
 
-- Ratatui API or source compatibility
+- Rust or Ratatui source compatibility
+- Copying Rust ownership patterns when an explicit Mojo render transaction is
+  clearer
 - Windows support
 - A networking runtime comparable to Tokio
 - Python bindings
 - Dynamic runtime widget plugins
 - IDE completion, diagnostics, or language-server implementations
 - General text-encoding conversion beyond UTF-8 integration hooks
-- Charts, arbitrary canvas drawing, or dynamically growing inline output
+- Arbitrary canvas drawing before symbol/capability contracts, or dynamically
+  growing inline output
 - Persistent undo history across editor sessions
 
 ## Design principles
@@ -92,13 +136,32 @@ design around heterogeneous collections of runtime trait objects. Use closed
 
 ### Strict types
 
-The pinned Mojo 1.1 compiler uses `def` as the single function declaration
-syntax and rejects the removed `fn` keyword. This project preserves the strict
-semantics formerly associated with `fn`: arguments and returned values are
-statically typed, fallibility is declared with `raises`, polymorphism uses
-trait-constrained compile-time generics, compiler warnings are errors, and
-dynamic escape-hatch types are prohibited from the library package. The
-machine-checked rules are documented in [`TYPE_SAFETY.md`](TYPE_SAFETY.md).
+The pinned Mojo 1.1 nightly uses `def` as the standard function declaration
+syntax. `fn` is deprecated upstream and is rejected by project policy and the
+warnings-as-errors build. This project preserves the strict semantics formerly
+associated with `fn`: arguments and returned values are statically typed,
+fallibility is declared with `raises`, polymorphism uses trait-constrained
+compile-time generics, compiler warnings are errors, and dynamic escape-hatch
+types are prohibited from the library package. The machine-checked rules are
+documented in [`TYPE_SAFETY.md`](TYPE_SAFETY.md).
+
+### Nightly language policy
+
+- Pin the newest verified Mojo nightly exactly in `pixi.toml` and `pixi.lock`;
+  never use an unbounded nightly dependency.
+- Use `def` for functions, methods, closures, and function types. Do not add
+  `fn`, including in examples or generated fixtures.
+- Use explicit typed arguments and return types, `raises` for fallibility,
+  `mut` for mutation, `var` only for ownership transfer, `out` for
+  initialization, and `deinit` for consuming deinitialization.
+- Prefer trait-constrained static generics and `comptime` control flow. Avoid
+  dynamic erasure and private runtime/compiler APIs.
+- Keep imports explicit. Mojo 1.1 rejects implicit intra-package access and
+  combining same-named imported functions into an overload set.
+- Prefer safe standard-library values and operations. Nightly pointer and raw
+  memory APIs are permitted only inside the audited platform boundary.
+- Review the official nightly changelog before each toolchain bump, run the
+  complete locked check, and record any source migration in `docs/migration.md`.
 
 ### Explicit state and effects
 
@@ -171,7 +234,14 @@ dependency direction must remain from higher layers toward lower layers.
 - Start with `List[Cell]`; optimize storage only after measurement.
 - A cell contains grapheme data, terminal width, style, and wide-character
   continuation state.
-- Maintain previous and current buffers and emit only changed cells.
+- `Terminal` owns previous and current buffers and emits only changed cells.
+- A `Frame` represents one stable render transaction. It exposes the prepared
+  area, widget rendering, safe buffer access, and requested cursor state.
+- The primary Mojo API uses explicit `begin_frame` and `finish_frame` ownership;
+  a closure-based `draw` helper is optional when callable borrowing is proven
+  ergonomic on the pinned compiler.
+- Backends receive changed cells and terminal operations rather than owning a
+  second copy of the renderer's complete frame.
 - Later drawing replaces earlier drawing.
 - Clear/opaque regions and explicitly skipped transparent cells support
   overlays without a general compositing engine.
@@ -189,6 +259,29 @@ dependency direction must remain from higher layers toward lower layers.
 - Grapheme iteration must be linear; repeated indexed rescans are forbidden in
   hot paths.
 
+### Terminal capabilities and adaptive colors
+
+- `Color` remains a backend-independent, fully resolved cell value. Buffers,
+  frame diffs, snapshots, and ANSI encoding never contain unresolved theme
+  intent.
+- Pure nominal values describe terminal color profile and background
+  appearance. Invalid raw discriminants are rejected.
+- `ProfiledColor` selects explicit monochrome, ANSI-16, ANSI-256, and truecolor
+  fallbacks. `AdaptiveColor` selects light or dark alternatives before profile
+  resolution.
+- Resolution is deterministic and effect-free. It takes an explicit
+  `TerminalCapabilities` value, performs no terminal query while rendering,
+  and always returns an ordinary `Color`.
+- Backends expose their configured capabilities. `HeadlessBackend` accepts an
+  explicit value for deterministic theme tests; ANSI and inline backends use
+  conservative environment detection unless the application overrides it.
+- Capability precedence is explicit application override, safe detection,
+  environment hints, then a documented ANSI-16/dark fallback. Detection never
+  imports a private runtime API or broadens the unsafe boundary.
+- A later optional OSC background query must be coordinated through the input
+  reactor so its response cannot be mistaken for user input. It is not part of
+  rendering and is never required for deterministic operation.
+
 ### Layout
 
 The initial layout engine supports horizontal and vertical distribution with:
@@ -201,8 +294,13 @@ The initial layout engine supports horizontal and vertical distribution with:
 - spacing
 - alignment and flex distribution
 
-CSS grid and a general constraint solver are deferred until real applications
-demonstrate the need.
+Shared Ratatui constraint names must have compatible observable behavior for
+priority, over-constrained allocation, rounding, spacing, and flex. A generated
+golden corpus from Ratatui `0.30.2` defines that behavior. If the compact
+allocator cannot meet the corpus without becoming misleading, it will be
+renamed `StackLayout` and the compatible solver will own the `Layout` name.
+
+CSS grid remains deferred until real applications demonstrate the need.
 
 ### Widget contracts
 
@@ -216,9 +314,11 @@ demonstrate the need.
 ## Terminal and event model
 
 `TerminalSession` owns raw mode, alternate-screen state, cursor visibility,
-bracketed paste, mouse capture, capability state, and restoration. Normal
-return, reported errors, catchable failures, and Ctrl-C must restore the
-terminal. Recovery from `SIGKILL` is impossible and will not be promised.
+bracketed paste, mouse capture, and restoration. Backends own their configured
+capability value, while adaptive color resolution remains a pure core
+operation. Normal return, reported errors, catchable failures, and Ctrl-C must
+restore the terminal. Recovery from `SIGKILL` is impossible and will not be
+promised.
 
 The first backend is ANSI on POSIX. Headless rendering is implemented alongside
 it for tests. Inline viewport support follows reliable full-screen behavior.
@@ -321,6 +421,216 @@ The first widget set contains:
 Rich text uses `Span`, `Line`, and `Text`. Form controls follow the editor so
 text fields and text areas share its editing behavior.
 
+## Ratatui-informed API modernization
+
+The goal is a familiar mental model with Mojo-native ownership and static
+dispatch. Compatibility is divided into three categories:
+
+1. **Behavioral compatibility:** shared concepts such as constraints, style
+   composition, widget layering, viewport preparation, and frame diffing should
+   behave predictably for developers arriving from Ratatui.
+2. **Naming compatibility:** established names such as `Frame`, `Widget`,
+   `StatefulWidget`, `Paragraph`, `Layout`, `Constraint`, `Span`, `Line`, and
+   `Text` are retained when their semantics match.
+3. **Deliberate divergence:** Mojo ownership, explicit render transactions,
+   checked fallibility, static generics, built-in typed application state, and
+   the editor remain native Mojotui designs.
+
+### API rules
+
+- Public semantic states are not represented by arbitrary integers. Direction,
+  alignment, flex, colors, key codes, mouse actions, borders, modifiers,
+  command kinds, and result codes use nominal types or closed variants.
+- Absence uses `Optional`; public `-1` sentinels are removed.
+- Invalid configuration is unrepresentable when practical and otherwise
+  rejected explicitly. Constructors do not silently change an invalid enum-like
+  value into an unrelated default.
+- `Style` composes. Unspecified foreground, background, underline, and modifier
+  changes do not erase lower-level styling.
+- Cells retain Mojotui's wide-grapheme invariant. Buffer convenience methods do
+  not expose mutation that can orphan a continuation cell.
+- Rendering is deterministic. A render transaction cannot query the terminal,
+  execute effects, or retain a frame after presentation.
+- Existing public APIs receive a documented migration path when removal is not
+  required to prevent incorrect behavior.
+
+### Modernization stages and gates
+
+#### Stage A: frame and terminal ownership
+
+- Add `Frame`, `CompletedFrame`, cursor intent, and explicit begin/finish
+  transactions.
+- Move previous/current buffers and diff responsibility into `Terminal`.
+- Replace backend-specific resize calls in applications with terminal
+  autoresize and stable frame areas.
+- Give backends a changed-cell presentation contract plus clear, flush, cursor,
+  size, and optional scrolling capabilities.
+- Migrate `ApplicationRuntime`, examples, headless tests, ANSI golden tests, and
+  documentation.
+
+Exit: applications never allocate the root frame or reach through
+`terminal.backend` during a normal render loop. Full, unchanged, changed,
+resized, inline, fixed, cursor-visible, and cursor-hidden transactions have
+focused tests. Existing PTY restoration tests still pass.
+
+#### Stage B: semantic type strictness
+
+- Replace public raw-integer tags and bit masks with nominal values or variants.
+- Replace list/table selection sentinels with `Optional[UInt]`.
+- Type message queue results, editor commands, key and mouse events, layout
+  configuration, borders, modifiers, and wrap modes.
+
+Exit: the static policy rejects new public enum-like `Int` fields, invalid
+states have negative compile fixtures or raising constructors, and the full
+suite contains no compatibility regression hidden by silent normalization.
+
+#### Stage C: styles, cells, buffers, and text
+
+- Add composable style patches with foreground, background, underline, and
+  modifier add/remove semantics.
+- Add safe string, span, line, style-region, resize, merge, and difference-sequence
+  buffer operations.
+- Make `Span`, `Line`, and `Text` directly renderable widgets and add concise
+  raw/styled constructors, alignment, append, height, and patch operations.
+- Define an explicit overflow policy so wrapping never silently loses a wide
+  grapheme.
+
+Exit: nested style tests preserve existing span attributes, wide-cell property
+tests cover every convenience path, and simple text rendering no longer
+requires nested manual constructors.
+
+#### Stage D: layout compatibility
+
+- Generate Ratatui `0.30.2` fixtures for all constraint kinds, over-constrained
+  layouts, rounding, margins, spacing, and flex modes.
+- Implement compatible priorities plus `SpaceAround` and `SpaceEvenly`, or
+  publish the current allocator under a clearly different name.
+- Add optional caching only after benchmarks show a repeated-layout benefit.
+
+Exit: every shared `Layout` case matches the fixture corpus and all returned
+rectangles remain contained, nonnegative, and deterministic.
+
+#### Stage E: widget depth
+
+- Add paragraph word wrapping, trim, scroll, and alignment.
+- Add block border sets, asymmetric padding, multiple title positions, and safe
+  border composition.
+- Add multiline list items, scroll padding, table row heights, footer,
+  row/column/cell selection, and highlight-spacing policies.
+- Add `Fill`; add bar charts and charts after the dashboard demonstrates the
+  core configuration APIs.
+
+Exit: the existing widgets cover the common Ratatui configuration paths in
+golden tests without compromising editor/form behavior.
+
+#### Stage F: application host and ecosystem boundary
+
+- Allow `Application.init` to return initial typed commands.
+- Provide default empty subscriptions and explicit continue/exit control flow.
+- Add a lifecycle-safe fullscreen and inline host that owns the session,
+  terminal, reactor, parser, runtime, and adapter scope.
+- The host polls and coordinates only; `RuntimeAdapter` remains responsible for
+  general task execution.
+- Document stable `core`, `text`, `widgets`, and `terminal` APIs separately from
+  experimental `event`, `app`, `editor`, and `forms` APIs.
+
+Exit: a complete typed application needs no hand-written terminal plumbing,
+startup commands run through the adapter, all work is scoped on shutdown, and
+the renderer remains independently usable.
+
+#### Stage G: host correctness and nightly hardening
+
+- Make adapter-to-host delivery lossless under queue pressure. A host must not
+  destroy the unconsumed tail of a transferred completion batch.
+- Add a finite work budget per host turn and reconcile subscriptions once after
+  a processed batch. Sustained producers must not starve rendering.
+- Separate application tick, input escape, frame, and runtime deadlines. Derive
+  each reactor timeout from the nearest deadline so continuous input cannot
+  starve ticks.
+- Carry delivery policy with host-generated messages: keys and paste remain
+  lossless, while tick and resize messages use stable latest-value keys.
+- Query terminal dimensions from the output descriptor and define dynamic
+  inline resize behavior. Cover distinct input/output descriptors with PTYs.
+- Resolve widget styles by composing `StylePatch` values over inherited base
+  styles. Selection and paragraph rendering must not erase span attributes.
+- Replace silent normalization of invalid ratios and glyph sets with validated
+  nominal values and raising construction.
+- Pin or explicitly document Unicode whitespace behavior used by word wrapping.
+
+Exit: oversized adapter batches are retained without loss, every host turn is
+bounded, periodic ticks progress under continuous input, resize is correct with
+separate descriptors and inline output, nested style tests retain prior
+attributes, and the full nightly validation suite passes.
+
+#### Stage H: adaptive capabilities and portable themes
+
+- Add validated `ColorProfile`, `TerminalAppearance`, and
+  `TerminalCapabilities` values in the rendering core.
+- Add `ProfiledColor` and `AdaptiveColor` with deterministic resolution to a
+  fully resolved `Color`. Include explicit light, dark, unknown-appearance,
+  monochrome, ANSI-16, ANSI-256, and truecolor behavior.
+- Expose capabilities from the backend contract and `Terminal`; make every
+  built-in backend configurable, with a deterministic headless default.
+- Add conservative environment detection without FFI. Explicit configuration
+  must override detection, and malformed or contradictory hints must fall back
+  safely.
+- Exercise adaptive colors in the dashboard and document theme construction,
+  backend configuration, limitations, and pre-1.0 migration.
+- Add unit, compile-fail, ANSI, backend, and platform-environment coverage while
+  retaining resolved cells and the existing unsafe allowlist.
+
+Exit: applications can resolve one portable theme deterministically for
+headless, monochrome, ANSI-16, ANSI-256, and truecolor targets; light/dark
+selection is explicit and tested; backends report the configured capability
+value; invalid semantic discriminants do not compile through unrelated raw
+integers; and the complete locked check passes without new unsafe calls.
+
+#### Stage I: extension foundation
+
+- Separate the distribution into dependency-directed core, widgets, POSIX
+  terminal, application, and editor packages, with a convenience package that
+  re-exports the supported surface.
+- Add public validated border, line, bar, scrollbar, shade, and braille symbol
+  sets instead of hardcoding glyph choices inside individual widgets.
+- Publish a headless extension test kit with buffer snapshots, stable golden
+  output, wide-grapheme invariant helpers, and a third-party widget template.
+- Adopt consistent Mojo-native `with_*` builders and evaluate a safe
+  closure-based `Terminal.draw()` convenience over explicit frame
+  transactions.
+- Record differential fixture provenance using the published Ratatui tag,
+  peeled commit, generator version, and corpus checksum.
+
+Exit: a third-party widget can depend only on the rendering core, configure
+symbols without copying widget internals, and test deterministic output without
+private Mojotui helpers.
+
+#### Stage J: widget depth and measured performance
+
+- Deepen Block, Gauge, LineGauge, Scrollbar, Sparkline, List, Table, and Tabs
+  before adding broad widget families.
+- Add BarChart first and Chart second. Defer Canvas until symbol merging,
+  overlay semantics, and terminal capability negotiation are stable.
+- Compose lazy visible-line paragraph layout and cache multiline collection
+  heights in caller-owned state where benchmarks demonstrate a benefit.
+- Optimize frame preparation and diffing in measured layers: first use safe
+  flat scalar traversal, eliminate unchanged-cell copies, and specialize
+  invariant-preserving bulk fill; then evaluate compact numeric cell metadata
+  before attempting SIMD.
+- A SIMD path must compare exact semantic state or verify every possible
+  collision, use only safe standard-library APIs, retain a scalar remainder,
+  and beat the scalar path on full, one-cell, and unchanged frame benchmarks.
+- GPU work is not part of core terminal diffing. Device dispatch and
+  synchronization are reserved for a later optional high-resolution Canvas or
+  image pipeline whose workload demonstrates an end-to-end benefit.
+- Stream or reuse frame-diff scratch storage only when profiling shows a
+  material gain without weakening the backend transaction contract.
+
+Exit: common widgets cover their primary Ratatui configuration paths, data
+visualization has stable symbol/style contracts, large text or collection
+rendering remains proportional to the visible viewport, and retained render
+optimizations have checked-in semantic coverage plus reproducible before/after
+benchmarks on the pinned nightly.
+
 ## Delivery phases
 
 ### Phase 0: feasibility
@@ -402,6 +712,19 @@ The pinned toolchain has no supported public general task runtime, so the
 concrete AsyncRT binding remains deferred. The runtime-neutral adapter contract
 is implemented and tested without importing private `_asyncrt` internals.
 
+### Phase 7: public API modernization
+
+Execute Stages A through F above in order. This phase may make breaking changes
+because the project is pre-1.0. Each stage must update examples, reference docs,
+migration notes, compile-time API tests, benchmarks, and the limitations page
+before the next stage treats its surface as stable.
+
+### Phase 8: correctness and extension foundation
+
+Execute Stages G through J in order. Correctness and bounded scheduling precede
+package splitting or new widgets. Performance changes require a checked-in
+benchmark and must not broaden the unsafe allowlist.
+
 ## Verification strategy
 
 - Unit tests for pure data structures and algorithms
@@ -411,6 +734,9 @@ is implemented and tested without importing private `_asyncrt` internals.
 - PTY integration tests for raw mode, resize, input, partial sequences, errors,
   Ctrl-C, and restoration
 - Differential and conformance fixtures for Unicode width
+- Differential fixtures generated from Ratatui `0.30.2` for layout and style
+  behavior shared by name
+- Compile fixtures proving nominal public types reject unrelated integer values
 - Benchmarks for full/diff redraw, layout, width lookup, parsing, editor edits,
   undo/redo, and large-file scrolling
 - Debug and optimized CI runs
@@ -430,6 +756,17 @@ Initial performance targets:
 - `0.2`: application framework and reactor
 - `0.3`: editor engine and editor widget
 - `0.4`: forms, file services, and the runtime-neutral adapter boundary
+- `0.5`: frame transaction, terminal-owned renderer, nominal types, style
+  composition, and layout compatibility
+- `0.6`: deeper widgets, application host, and documented API stability tiers
+- `0.6.1`: lossless host backpressure, deadline scheduling, bounded turns,
+  descriptor/inline resize correctness, and inherited style composition
+- `0.6.2`: explicit terminal capabilities, portable light/dark themes, and
+  deterministic color-profile degradation
+- `0.7`: package boundaries, public symbols, extension testing, builders, and
+  reproducible Ratatui fixture provenance
+- `0.8`: deeper existing widgets, BarChart, Chart, and benchmark-driven visible
+  text/collection rendering
 
 Pre-1.0 minor releases may make breaking changes. Each release pins and names an
 exact tested Mojo nightly and includes migration notes. Source packages are the
@@ -442,21 +779,29 @@ documentation, terminal support matrix, and known-limitations page.
 
 ## Local release evidence
 
-The 2026-08-19 macOS arm64 run used Mojo
+The 2026-08-20 macOS arm64 run used Mojo
 `1.1.0.dev2026081813` and Pixi `0.76.2`.
 
-- `pixi run check`: 151 Mojo tests passed across 26 test modules.
+- `pixi run check`: 214 Mojo tests passed across 28 test modules; 20
+  compile-fail fixtures also enforced migrated nominal API boundaries.
 - Both examples built, and PTY tests passed normal close, implicit destruction,
-  raised error, Ctrl-C, and resize cases.
+  raised error, hosted inline application, Ctrl-C, and resize cases.
 - Formatting passed; the package precompiled with `--Werror`.
 - The strict-type policy found no obsolete `fn` declarations, `AnyType`, or
   `PythonObject` use in the library.
 - The unsafe audit found nine documented FFI calls in one allowlisted platform
   file and none elsewhere.
-- The 80x24 benchmark measured 111.91 us for a full ANSI frame and 63.14 us for
-  a one-cell diff, about 8,936 and 15,837 frames per second.
-- The 10 MiB editor benchmark measured 3.94 us per middle edit, 3.21 us per
-  undo/redo operation, and 609.05 us per 80x24 viewport render.
+- After safe flat diffing and invariant-preserving bulk fill, three 80x24
+  benchmark runs had medians of 74.19 us for a full ANSI frame, 34.00 us for a
+  one-cell diff, and 33.21 us for an unchanged frame: about 13,479, 29,413, and
+  30,112 frames per second. Against the immediately preceding local medians of
+  138.36 us and 59.10 us, full and one-cell latency fell by about 46% and 42%.
+- An isolated stage run attributed only about 10.5 us of a one-cell operation
+  to scalar diffing. SIMD remains deferred because a packed shadow
+  representation would add mutation and memory costs without a demonstrated
+  end-to-end gain; no unsafe operation was added.
+- The 10 MiB editor regression benchmark measured 3.70 us per middle edit,
+  2.82 us per undo/redo operation, and 617.48 us per 80x24 viewport render.
 
 The compiler distribution links against a newer macOS deployment target than
 the local build target and emits linker warnings during executable builds. The
@@ -479,12 +824,16 @@ after every target passes.
 | Editor scope delays usable rendering | Ship it as an independent later subsystem. |
 | Terminal state leaks after failure | Use a session guard and PTY lifecycle tests. |
 | Unsafe optimization spreads | Enforce a zero-default budget and an explicit allowlist in CI. |
+| Familiar names have incompatible semantics | Require differential fixtures or use clearly different names. |
+| Frame migration breaks applications | Keep one staged compatibility adapter, migration examples, and compile-time API tests. |
+| A high-level host becomes an executor | Restrict it to polling and coordination; keep task execution behind `RuntimeAdapter`. |
 
 ## Definition of done
 
 The planned project is complete when the renderer, POSIX terminal backend,
 initial widgets, application framework, editor engine, file and clipboard
 interfaces, and general Mojo runtime adapter meet their phase gates on macOS and
-Linux; documentation is sufficient for another developer to build an
-application; and all unsafe or FFI code is confined to documented, tested,
-audited platform boundaries.
+Linux; modernization Stages A through J meet their exit criteria; documentation
+and migration material are sufficient for another developer to build an
+application without backend-specific render plumbing; and all unsafe or FFI code
+is confined to documented, tested, audited platform boundaries.

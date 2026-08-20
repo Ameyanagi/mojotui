@@ -1,4 +1,4 @@
-from std.testing import TestSuite, assert_equal, assert_true
+from std.testing import TestSuite, assert_equal, assert_false, assert_true
 
 from mojotui import (
     ControllerActionKind,
@@ -63,7 +63,8 @@ def test_default_and_emacs_keymaps_produce_semantic_actions() raises:
     var defaults = default_editor_keymap()
     var default_state = KeymapState[EditorControllerAction]()
     var left = defaults.resolve(default_state, KeyChord(KeyEvent.LEFT), "editor", 0)
-    assert_equal(left.actions[0].command.kind, EditorCommandKind.MOVE_LEFT)
+    assert_true(left.actions[0].command)
+    assert_true(left.actions[0].command.value().kind == EditorCommandKind.MOVE_LEFT)
 
     var emacs = emacs_editor_keymap()
     var emacs_state = KeymapState[EditorControllerAction]()
@@ -73,7 +74,8 @@ def test_default_and_emacs_keymaps_produce_semantic_actions() raises:
         "emacs",
         0,
     )
-    assert_equal(forward.actions[0].command.kind, EditorCommandKind.MOVE_RIGHT)
+    assert_true(forward.actions[0].command)
+    assert_true(forward.actions[0].command.value().kind == EditorCommandKind.MOVE_RIGHT)
 
 
 def test_vim_keymaps_include_modes_and_multi_key_motion() raises:
@@ -82,21 +84,26 @@ def test_vim_keymaps_include_modes_and_multi_key_motion() raises:
     var pending = normal.resolve(state, KeyChord.character("g"), "vim-normal", 0)
     assert_true(pending.pending)
     var matched = normal.resolve(state, KeyChord.character("g"), "vim-normal", 1)
-    assert_equal(matched.actions[0].command.kind, EditorCommandKind.DOCUMENT_START)
+    assert_true(matched.actions[0].command)
+    assert_true(
+        matched.actions[0].command.value().kind == EditorCommandKind.DOCUMENT_START
+    )
 
     var insert = vim_insert_keymap()
     var insert_state = KeymapState[EditorControllerAction]()
     var escape = insert.resolve(
         insert_state, KeyChord(KeyEvent.ESCAPE), "vim-insert", 0
     )
-    assert_equal(escape.actions[0].kind, ControllerActionKind.ENTER_NORMAL)
+    assert_true(escape.actions[0].kind == ControllerActionKind.ENTER_NORMAL)
+    assert_false(escape.actions[0].command)
 
 
 def test_unbound_text_input_becomes_insert_action() raises:
     var action = text_input_action(KeyEvent.character("界"))
     assert_true(action)
-    assert_equal(action.value().command.kind, EditorCommandKind.INSERT)
-    assert_equal(action.value().command.text, "界")
+    assert_true(action.value().command)
+    assert_true(action.value().command.value().kind == EditorCommandKind.INSERT)
+    assert_equal(action.value().command.value().text, "界")
 
 
 def main() raises:

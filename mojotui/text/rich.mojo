@@ -2,26 +2,112 @@
 
 from std.collections import List
 
-from ..core.buffer import Buffer
+from ..core.buffer import Buffer, BufferWrite
 from ..core.cell import Cell
 from ..core.geometry import Point, Rect
-from ..core.style import Style
+from ..core.style import Style, StylePatch
+from ..core.widget import Widget
+from ._unicode_width_data import is_whitespace
 from .width import grapheme_width, text_width
 
 
-struct Alignment:
+struct Alignment(Copyable, Equatable, ImplicitlyCopyable):
     """Horizontal alignment for a logical or wrapped line."""
 
-    comptime START = 0
-    comptime CENTER = 1
-    comptime END = 2
+    comptime START = Alignment(0, _validated=True)
+    comptime CENTER = Alignment(1, _validated=True)
+    comptime END = Alignment(2, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 2:
+            raise Error("invalid text alignment")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
 
 
-struct Span(Copyable):
-    """One styled run of UTF-8 text."""
+struct _StyledGrapheme(Copyable):
+    var content: String
+    var style: StylePatch
+    var width: Int
+    var whitespace: Bool
+
+    def __init__(out self, var content: String, style: StylePatch, width: Int):
+        self.whitespace = True
+        var scalar_count = 0
+        for scalar in content.codepoints():
+            scalar_count += 1
+            if not is_whitespace(Int(scalar.to_u32())):
+                self.whitespace = False
+        if scalar_count == 0:
+            self.whitespace = False
+        self.content = content^
+        self.style = style.copy()
+        self.width = width
+
+
+def _line_tokens(line: Line, ambiguous_is_wide: Bool) -> List[_StyledGrapheme]:
+    var tokens = List[_StyledGrapheme]()
+    for span_index in range(len(line.spans)):
+        var span = line.spans[span_index].copy()
+        for grapheme in span.content.graphemes():
+            var content = String(grapheme)
+            var width = grapheme_width(grapheme, ambiguous_is_wide)
+            if width > 0:
+                tokens.append(_StyledGrapheme(content^, span.style, width))
+    return tokens^
+
+
+def _flush_wrapped_line(
+    alignment: Alignment,
+    mut lines: List[Line],
+    mut current: List[Span],
+    mut current_width: Int,
+):
+    lines.append(Line(current^, alignment))
+    current = List[Span]()
+    current_width = 0
+
+
+def _append_token_range_wrapped(
+    tokens: List[_StyledGrapheme],
+    start: Int,
+    end: Int,
+    maximum_width: Int,
+    alignment: Alignment,
+    mut lines: List[Line],
+    mut current: List[Span],
+    mut current_width: Int,
+):
+    for index in range(start, end):
+        var token = tokens[index].copy()
+        if token.width > maximum_width:
+            if len(current) > 0:
+                _flush_wrapped_line(alignment, lines, current, current_width)
+            lines.append(
+                Line(
+                    [Span(token.content.copy(), token.style)],
+                    alignment,
+                )
+            )
+            continue
+        if current_width > 0 and current_width + token.width > maximum_width:
+            _flush_wrapped_line(alignment, lines, current, current_width)
+        current.append(Span(token.content.copy(), token.style))
+        current_width += token.width
+
+
+struct Span(Copyable, Widget):
+    """One UTF-8 text run carrying compositional style intent."""
 
     var content: String
-    var style: Style
+    var style: StylePatch
 
     def __init__(
         out self,
@@ -29,36 +115,106 @@ struct Span(Copyable):
         style: Style = Style.plain(),
     ):
         self.content = content^
+        self.style = StylePatch.from_style(style)
+
+    def __init__(out self, var content: String, style: StylePatch):
+        self.content = content^
         self.style = style.copy()
 
     def width(self, ambiguous_is_wide: Bool = False) -> Int:
         return text_width(self.content, ambiguous_is_wide)
 
+    @staticmethod
+    def raw(var content: String) -> Self:
+        return Self(content^)
 
-struct Line(Copyable):
+    @staticmethod
+    def styled(var content: String, style: Style) -> Self:
+        return Self(content^, style)
+
+    @staticmethod
+    def patched(var content: String, style: StylePatch) -> Self:
+        return Self(content^, style)
+
+    def resolved_style(self, base: Style = Style.plain()) -> Style:
+        return self.style.resolved(base)
+
+    def render(self, area: Rect, mut buffer: Buffer):
+        if area.is_empty():
+            return
+        var x = area.x
+        for grapheme in self.content.graphemes():
+            var grapheme_columns = grapheme_width(grapheme)
+            if grapheme_columns == 0:
+                continue
+            if x >= area.right() or grapheme_columns > area.right() - x:
+                return
+            _ = buffer.set_cell(
+                Point(x, area.y),
+                Cell(
+                    String(grapheme),
+                    grapheme_columns,
+                    style=self.resolved_style(),
+                ),
+            )
+            x += grapheme_columns
+
+    def write(
+        self,
+        point: Point,
+        mut buffer: Buffer,
+        ambiguous_is_wide: Bool = False,
+    ) raises -> BufferWrite:
+        """Write this span and return its explicit clipping outcome."""
+        return buffer.set_string(
+            point,
+            self.content,
+            self.resolved_style(),
+            ambiguous_is_wide,
+        )
+
+    def apply_style_patch(mut self, patch: StylePatch):
+        self.style = self.style.then(patch)
+
+    def patched_style(self, patch: StylePatch) -> Self:
+        var result = self.copy()
+        result.apply_style_patch(patch)
+        return result^
+
+
+struct Line(Copyable, Widget):
     """A logical line composed of styled spans."""
 
     var spans: List[Span]
-    var alignment: Int
+    var alignment: Alignment
 
     def __init__(
         out self,
         var spans: List[Span] = List[Span](),
-        alignment: Int = Alignment.START,
+        alignment: Alignment = Alignment.START,
     ):
         self.spans = spans^
-        self.alignment = (
-            alignment if alignment >= Alignment.START
-            and alignment <= Alignment.END else Alignment.START
-        )
+        self.alignment = alignment
 
     @staticmethod
     def from_text(
         var content: String,
         style: Style = Style.plain(),
-        alignment: Int = Alignment.START,
+        alignment: Alignment = Alignment.START,
     ) -> Self:
         return Self([Span(content^, style)], alignment)
+
+    @staticmethod
+    def raw(var content: String, alignment: Alignment = Alignment.START) -> Self:
+        return Self.from_text(content^, alignment=alignment)
+
+    @staticmethod
+    def styled(
+        var content: String,
+        style: Style,
+        alignment: Alignment = Alignment.START,
+    ) -> Self:
+        return Self.from_text(content^, style, alignment)
 
     def width(self, ambiguous_is_wide: Bool = False) -> Int:
         var total = 0
@@ -68,6 +224,58 @@ struct Line(Copyable):
                 return Int.MAX
             total += width
         return total
+
+    def apply_style_patch(mut self, patch: StylePatch):
+        for index in range(len(self.spans)):
+            self.spans[index].apply_style_patch(patch)
+
+    def append(mut self, span: Span):
+        self.spans.append(span.copy())
+
+    def set_alignment(mut self, alignment: Alignment):
+        self.alignment = alignment
+
+    def aligned(self, alignment: Alignment) -> Self:
+        var result = self.copy()
+        result.set_alignment(alignment)
+        return result^
+
+    def write(
+        self,
+        point: Point,
+        mut buffer: Buffer,
+        ambiguous_is_wide: Bool = False,
+    ) raises -> BufferWrite:
+        """Write spans in order and stop at the first clipped grapheme."""
+        var end = point.copy()
+        var graphemes_written = 0
+        var columns_written = 0
+        for index in range(len(self.spans)):
+            var outcome = self.spans[index].write(end, buffer, ambiguous_is_wide)
+            end = outcome.end.copy()
+            graphemes_written += outcome.graphemes_written
+            columns_written += outcome.columns_written
+            if outcome.truncated:
+                return BufferWrite(
+                    end,
+                    graphemes_written,
+                    columns_written,
+                    True,
+                )
+        return BufferWrite(
+            end,
+            graphemes_written,
+            columns_written,
+            False,
+        )
+
+    def render(self, area: Rect, mut buffer: Buffer):
+        render_line(self, area, buffer)
+
+    def patched_style(self, patch: StylePatch) -> Self:
+        var result = self.copy()
+        result.apply_style_patch(patch)
+        return result^
 
     def wrapped(
         self, maximum_width: Int, ambiguous_is_wide: Bool = False
@@ -91,6 +299,12 @@ struct Line(Copyable):
                         lines.append(Line(current^, self.alignment))
                         current = List[Span]()
                         current_width = 0
+                    lines.append(
+                        Line(
+                            [Span(String(grapheme), span.style)],
+                            self.alignment,
+                        )
+                    )
                     continue
                 if (
                     width > 0
@@ -107,8 +321,104 @@ struct Line(Copyable):
             lines.append(Line(current^, self.alignment))
         return lines^
 
+    def wrapped_words(
+        self,
+        maximum_width: Int,
+        trim: Bool = True,
+        ambiguous_is_wide: Bool = False,
+    ) -> List[Line]:
+        """Wrap at word boundaries while retaining graphemes and span styles."""
+        var safe_width = max(maximum_width, 0)
+        var lines = List[Line]()
+        if safe_width == 0:
+            lines.append(Line(alignment=self.alignment))
+            return lines^
 
-struct Text(Copyable):
+        var tokens = _line_tokens(self, ambiguous_is_wide)
+        var current = List[Span]()
+        var current_width = 0
+        var pending_start = 0
+        var pending_end = 0
+        var pending_width = 0
+        var index = 0
+        while index < len(tokens):
+            if tokens[index].whitespace:
+                pending_start = index
+                pending_width = 0
+                while index < len(tokens) and tokens[index].whitespace:
+                    pending_width += tokens[index].width
+                    index += 1
+                pending_end = index
+                continue
+
+            var word_start = index
+            var word_width = 0
+            while index < len(tokens) and not tokens[index].whitespace:
+                word_width += tokens[index].width
+                index += 1
+
+            if (
+                len(current) > 0
+                and current_width + pending_width + word_width > safe_width
+            ):
+                _flush_wrapped_line(self.alignment, lines, current, current_width)
+
+            if not (len(current) == 0 and trim) and pending_width > 0:
+                _append_token_range_wrapped(
+                    tokens,
+                    pending_start,
+                    pending_end,
+                    safe_width,
+                    self.alignment,
+                    lines,
+                    current,
+                    current_width,
+                )
+            pending_width = 0
+            _append_token_range_wrapped(
+                tokens,
+                word_start,
+                index,
+                safe_width,
+                self.alignment,
+                lines,
+                current,
+                current_width,
+            )
+
+        if pending_width > 0 and not trim:
+            _append_token_range_wrapped(
+                tokens,
+                pending_start,
+                pending_end,
+                safe_width,
+                self.alignment,
+                lines,
+                current,
+                current_width,
+            )
+        if len(current) > 0 or len(lines) == 0:
+            lines.append(Line(current^, self.alignment))
+        return lines^
+
+    def scrolled(self, columns: Int, ambiguous_is_wide: Bool = False) -> Self:
+        """Drop complete graphemes before a horizontal display-column offset."""
+        var skip = max(columns, 0)
+        if skip == 0:
+            return self.copy()
+        var tokens = _line_tokens(self, ambiguous_is_wide)
+        var spans = List[Span]()
+        var consumed = 0
+        for index in range(len(tokens)):
+            var token = tokens[index].copy()
+            if consumed < skip:
+                consumed += token.width
+                continue
+            spans.append(Span(token.content.copy(), token.style))
+        return Self(spans^, Alignment.START)
+
+
+struct Text(Copyable, Widget):
     """A sequence of independently aligned logical lines."""
 
     var lines: List[Line]
@@ -120,12 +430,68 @@ struct Text(Copyable):
     def from_line(line: Line) -> Self:
         return Self([line.copy()])
 
+    @staticmethod
+    def from_text(
+        var content: String,
+        style: Style = Style.plain(),
+        alignment: Alignment = Alignment.START,
+    ) -> Self:
+        """Create independently styled logical lines split at newlines."""
+        var lines = List[Line]()
+        var parts = StringSlice(content).split("\n")
+        for index in range(len(parts)):
+            lines.append(Line.from_text(String(parts[index]), style, alignment))
+        return Self(lines^)
+
+    @staticmethod
+    def raw(var content: String) -> Self:
+        return Self.from_text(content^)
+
+    @staticmethod
+    def styled(var content: String, style: Style) -> Self:
+        return Self.from_text(content^, style)
+
+    def height(self) -> Int:
+        return len(self.lines)
+
+    def width(self, ambiguous_is_wide: Bool = False) -> Int:
+        var maximum = 0
+        for index in range(len(self.lines)):
+            maximum = max(maximum, self.lines[index].width(ambiguous_is_wide))
+        return maximum
+
+    def append(mut self, line: Line):
+        self.lines.append(line.copy())
+
+    def set_alignment(mut self, alignment: Alignment):
+        for index in range(len(self.lines)):
+            self.lines[index].set_alignment(alignment)
+
+    def aligned(self, alignment: Alignment) -> Self:
+        var result = self.copy()
+        result.set_alignment(alignment)
+        return result^
+
+    def apply_style_patch(mut self, patch: StylePatch):
+        for index in range(len(self.lines)):
+            self.lines[index].apply_style_patch(patch)
+
+    def patched_style(self, patch: StylePatch) -> Self:
+        var result = self.copy()
+        result.apply_style_patch(patch)
+        return result^
+
+    def render(self, area: Rect, mut buffer: Buffer):
+        render_text(self, area, buffer, wrap=False)
+
 
 def render_line(
     line: Line,
     area: Rect,
     mut buffer: Buffer,
     ambiguous_is_wide: Bool = False,
+    base_style: Style = Style.plain(),
+    style_patch: StylePatch = StylePatch.plain(),
 ):
     """Render one line, clipping without splitting a wide grapheme."""
     if area.is_empty():
@@ -142,6 +508,7 @@ def render_line(
     var right = area.right()
     for span_index in range(len(line.spans)):
         var span = line.spans[span_index].copy()
+        var resolved_style = base_style.patched(span.style.then(style_patch))
         for grapheme in span.content.graphemes():
             var grapheme_columns = grapheme_width(grapheme, ambiguous_is_wide)
             if grapheme_columns == 0:
@@ -150,7 +517,7 @@ def render_line(
                 return
             _ = buffer.set_cell(
                 Point(x, area.y),
-                Cell(String(grapheme), grapheme_columns, style=span.style),
+                Cell(String(grapheme), grapheme_columns, style=resolved_style),
             )
             x += grapheme_columns
 
@@ -161,6 +528,8 @@ def render_text(
     mut buffer: Buffer,
     wrap: Bool = True,
     ambiguous_is_wide: Bool = False,
+    base_style: Style = Style.plain(),
+    style_patch: StylePatch = StylePatch.plain(),
 ):
     """Render visible logical lines, optionally wrapping by grapheme width."""
     if area.is_empty():
@@ -180,6 +549,8 @@ def render_text(
                     Rect(area.x, row, area.width, 1),
                     buffer,
                     ambiguous_is_wide,
+                    base_style,
+                    style_patch,
                 )
                 row += 1
         else:
@@ -188,5 +559,7 @@ def render_text(
                 Rect(area.x, row, area.width, 1),
                 buffer,
                 ambiguous_is_wide,
+                base_style,
+                style_patch,
             )
             row += 1

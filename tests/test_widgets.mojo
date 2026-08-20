@@ -1,27 +1,44 @@
-from std.testing import TestSuite, assert_equal, assert_true
+from std.testing import (
+    TestSuite,
+    assert_equal,
+    assert_false,
+    assert_raises,
+    assert_true,
+)
 
 from mojotui import (
     Block,
+    BorderType,
     Buffer,
     Cell,
     Clear,
+    Color,
+    Fill,
     Gauge,
+    HighlightSpacing,
     Line,
     LineGauge,
     List,
     ListItem,
     ListState,
     Paragraph,
+    Padding,
     Rect,
+    Ratio,
     Row,
     Scrollbar,
     ScrollbarState,
+    ScrollbarSymbols,
     Sparkline,
     Style,
+    StylePatch,
     Table,
+    TableSelection,
     TableState,
     Tabs,
     Text,
+    TitlePosition,
+    Alignment,
     Constraint,
     render_stateful_widget,
 )
@@ -60,6 +77,61 @@ def test_paragraph_wraps_inside_block() raises:
     assert_equal(row(buffer, 2), "│ 界c │")
 
 
+def test_paragraph_word_wrap_trim_scroll_and_alignment() raises:
+    var trimmed = Buffer(Rect(0, 0, 7, 2))
+    var trimmed_area = trimmed.area.copy()
+    Paragraph(Text.raw("hello world")).render(trimmed_area, trimmed)
+    assert_equal(row(trimmed, 0), "hello  ")
+    assert_equal(row(trimmed, 1), "world  ")
+
+    var preserved = Buffer(Rect(0, 0, 7, 2))
+    var preserved_area = preserved.area.copy()
+    Paragraph(Text.raw("hello world"), trim=False).render(preserved_area, preserved)
+    assert_equal(row(preserved, 1), " world ")
+
+    var scrolled = Buffer(Rect(0, 0, 4, 1))
+    var scrolled_area = scrolled.area.copy()
+    Paragraph(Text.raw("one\ntwo\nthree")).without_wrap().scroll(
+        vertical=1, horizontal=1
+    ).render(scrolled_area, scrolled)
+    assert_equal(row(scrolled, 0), "wo  ")
+
+    var aligned = Buffer(Rect(0, 0, 4, 1))
+    var aligned_area = aligned.area.copy()
+    Paragraph(Text.raw("ok")).alignment(Alignment.END).render(aligned_area, aligned)
+    assert_equal(row(aligned, 0), "  ok")
+
+
+def test_paragraph_base_style_is_inherited_by_colored_spans() raises:
+    var paragraph = Paragraph(
+        Text.from_line(Line.styled("x", Style(foreground=Color.indexed(1)))),
+        Style(background=Color.indexed(7)),
+    )
+    var buffer = Buffer(Rect(0, 0, 1, 1))
+    var area = buffer.area.copy()
+    paragraph.render(area, buffer)
+    assert_true(buffer.cell({0, 0}).style.foreground.equals(Color.indexed(1)))
+    assert_true(buffer.cell({0, 0}).style.background.equals(Color.indexed(7)))
+
+
+def test_block_asymmetric_padding_border_set_and_bottom_title() raises:
+    var block = Block.bordered(
+        Line.raw("Bottom", Alignment.END),
+        border_type=BorderType.ROUNDED,
+        title_position=TitlePosition.BOTTOM,
+    ).with_padding(Padding(left=1, right=2, top=1))
+    var buffer = Buffer(Rect(0, 0, 10, 5))
+    var area = buffer.area.copy()
+    block.render(area, buffer)
+    assert_equal(row(buffer, 0), "╭────────╮")
+    assert_equal(row(buffer, 4), "╰──Bottom╯")
+    var inner = block.inner(area)
+    assert_equal(inner.x, 2)
+    assert_equal(inner.y, 2)
+    assert_equal(inner.width, 5)
+    assert_equal(inner.height, 2)
+
+
 def test_clear_removes_wide_cell_footprint() raises:
     var buffer = Buffer(Rect(0, 0, 3, 1))
     _ = buffer.set_grapheme({0, 0}, "界")
@@ -68,10 +140,22 @@ def test_clear_removes_wide_cell_footprint() raises:
     assert_equal(row(buffer, 0), "  x")
 
 
+def test_fill_clips_single_column_symbol_and_style() raises:
+    var style = Style(modifiers=Style.BOLD)
+    var buffer = Buffer(Rect(0, 0, 5, 2))
+    Fill(".", style).render(Rect(1, 1, 3, 1), buffer)
+    assert_equal(row(buffer, 0), "     ")
+    assert_equal(row(buffer, 1), " ... ")
+    assert_true(buffer.cell({1, 1}).style.has(Style.BOLD))
+
+    with assert_raises(contains="exactly one column"):
+        _ = Fill("界")
+
+
 def test_gauge_and_line_gauge_snapshots() raises:
     var buffer = Buffer(Rect(0, 0, 8, 2))
-    Gauge(0.5).render(Rect(0, 0, 8, 1), buffer)
-    LineGauge(0.25).render(Rect(0, 1, 8, 1), buffer)
+    Gauge(Ratio(0.5)).render(Rect(0, 0, 8, 1), buffer)
+    LineGauge(Ratio(0.25)).render(Rect(0, 1, 8, 1), buffer)
     assert_equal(row(buffer, 0), "████░░░░")
     assert_equal(row(buffer, 1), "━━──────")
 
@@ -79,7 +163,7 @@ def test_gauge_and_line_gauge_snapshots() raises:
 def test_labeled_gauge_centers_text() raises:
     var buffer = Buffer(Rect(0, 0, 7, 1))
     var area = buffer.area.copy()
-    Gauge.labeled(1.0, Line.from_text("100%")).render(area, buffer)
+    Gauge.labeled(Ratio(1.0), Line.from_text("100%")).render(area, buffer)
     assert_equal(row(buffer, 0), "█100%██")
 
 
@@ -95,7 +179,7 @@ def test_widget_styles_are_written_to_cells() raises:
     var style = Style(modifiers=Style.BOLD)
     var buffer = Buffer(Rect(0, 0, 1, 1))
     var area = buffer.area.copy()
-    Gauge(1.0, filled_style=style).render(area, buffer)
+    Gauge(Ratio(1.0), filled_style=style).render(area, buffer)
     assert_true(buffer.cell({0, 0}).style.equals(style))
 
 
@@ -107,7 +191,7 @@ def test_list_scrolls_selection_into_visible_range() raises:
             ListItem.from_text("two"),
         ]
     )
-    var state = ListState(selected=2)
+    var state = ListState(selected=UInt(2))
     var buffer = Buffer(Rect(0, 0, 8, 2))
     var area = buffer.area.copy()
     render_stateful_widget(widget, area, buffer, state)
@@ -117,30 +201,78 @@ def test_list_scrolls_selection_into_visible_range() raises:
     assert_true(buffer.cell({0, 1}).style.has(Style.REVERSED))
 
 
+def test_list_selection_patch_preserves_span_foreground() raises:
+    var widget = List(
+        [ListItem.from_line(Line.styled("item", Style(foreground=Color.indexed(2))))],
+        selected_style=StylePatch(
+            background=Color.indexed(4),
+            add_modifiers=Style.REVERSED,
+        ),
+    )
+    var state = ListState(selected=UInt(0))
+    var buffer = Buffer(Rect(0, 0, 8, 1))
+    var area = buffer.area.copy()
+    widget.render(area, buffer, state)
+    var style = buffer.cell({2, 0}).style.copy()
+    assert_true(style.foreground.equals(Color.indexed(2)))
+    assert_true(style.background.equals(Color.indexed(4)))
+    assert_true(style.has(Style.REVERSED))
+
+
 def test_list_navigation_clamps_at_collection_edges() raises:
     var state = ListState()
     state.next(2)
     state.next(2)
     state.next(2)
-    assert_equal(state.selected, 1)
+    assert_true(state.selected)
+    assert_equal(Int(state.selected.value()), 1)
     state.previous(2)
     state.previous(2)
-    assert_equal(state.selected, 0)
-    state.select(-1, 2)
-    assert_equal(state.selected, -1)
+    assert_true(state.selected)
+    assert_equal(Int(state.selected.value()), 0)
+    state.select(None, 2)
+    assert_false(state.selected)
+
+
+def test_multiline_list_scroll_padding_and_highlight_spacing() raises:
+    var widget = List(
+        [
+            ListItem.from_text("zero"),
+            ListItem.from_text("one-a\none-b"),
+            ListItem.from_text("two"),
+            ListItem.from_text("three"),
+        ],
+        highlight_spacing=HighlightSpacing.WHEN_SELECTED,
+        repeat_highlight_symbol=True,
+        scroll_padding=1,
+    )
+    var state = ListState(selected=UInt(1))
+    var buffer = Buffer(Rect(0, 0, 8, 3))
+    var area = buffer.area.copy()
+    widget.render(area, buffer, state)
+    assert_equal(state.offset, 1)
+    assert_equal(row(buffer, 0), "> one-a ")
+    assert_equal(row(buffer, 1), "> one-b ")
+    assert_equal(row(buffer, 2), "  two   ")
+
+    var unselected = ListState()
+    var compact = Buffer(Rect(0, 0, 4, 1))
+    var compact_area = compact.area.copy()
+    widget.render(compact_area, compact, unselected)
+    assert_equal(row(compact, 0), "zero")
 
 
 def test_table_header_columns_and_body_scroll_snapshot() raises:
     var table = Table.with_header(
         [
-            Row([Line.from_text("alpha"), Line.from_text("10")]),
-            Row([Line.from_text("beta"), Line.from_text("20")]),
-            Row([Line.from_text("gamma"), Line.from_text("30")]),
+            Row.from_lines([Line.from_text("alpha"), Line.from_text("10")]),
+            Row.from_lines([Line.from_text("beta"), Line.from_text("20")]),
+            Row.from_lines([Line.from_text("gamma"), Line.from_text("30")]),
         ],
         [Constraint.length(4), Constraint.fill()],
-        Row([Line.from_text("NAME"), Line.from_text("CPU")]),
+        Row.from_lines([Line.from_text("NAME"), Line.from_text("CPU")]),
     )
-    var state = TableState(selected=2)
+    var state = TableState(selected=UInt(2))
     var buffer = Buffer(Rect(0, 0, 9, 3))
     var area = buffer.area.copy()
     table.render(area, buffer, state)
@@ -149,6 +281,43 @@ def test_table_header_columns_and_body_scroll_snapshot() raises:
     assert_equal(row(buffer, 1), "beta 20  ")
     assert_equal(row(buffer, 2), "gamm 30  ")
     assert_true(buffer.cell({0, 2}).style.has(Style.REVERSED))
+
+
+def test_table_multiline_rows_footer_and_cell_column_selection() raises:
+    var table = Table.with_header(
+        [
+            Row([Text.raw("a\nb"), Text.raw("10\n11")], height=2),
+            Row([Text.raw("c"), Text.raw("20")]),
+        ],
+        [Constraint.length(4), Constraint.fill()],
+        Row([Text.raw("H1"), Text.raw("H2")]),
+        selection=TableSelection.CELL,
+    ).with_footer(
+        Row([Text.raw("SUM"), Text.raw("30")]),
+        StylePatch(add_modifiers=Style.BOLD),
+    )
+    var state = TableState(selected=UInt(1), selected_column=UInt(1))
+    var buffer = Buffer(Rect(0, 0, 9, 5))
+    var area = buffer.area.copy()
+    table.render(area, buffer, state)
+    assert_equal(row(buffer, 0), "H1   H2  ")
+    assert_equal(row(buffer, 1), "a    10  ")
+    assert_equal(row(buffer, 2), "b    11  ")
+    assert_equal(row(buffer, 3), "c    20  ")
+    assert_equal(row(buffer, 4), "SUM  30  ")
+    assert_false(buffer.cell({0, 3}).style.has(Style.REVERSED))
+    assert_true(buffer.cell({5, 3}).style.has(Style.REVERSED))
+    assert_true(buffer.cell({0, 4}).style.has(Style.BOLD))
+
+    var column_table = table.copy()
+    column_table.selection = TableSelection.COLUMN
+    var column_state = TableState(selected_column=UInt(1))
+    var columns = Buffer(Rect(0, 0, 9, 5))
+    var columns_area = columns.area.copy()
+    column_table.render(columns_area, columns, column_state)
+    assert_true(columns.cell({5, 1}).style.has(Style.REVERSED))
+    assert_true(columns.cell({5, 3}).style.has(Style.REVERSED))
+    assert_false(columns.cell({0, 1}).style.has(Style.REVERSED))
 
 
 def test_tabs_snapshot_and_selected_style() raises:
@@ -192,6 +361,15 @@ def test_scrollbar_fills_track_when_content_fits() raises:
     assert_equal(row(buffer, 0), "█")
     assert_equal(row(buffer, 1), "█")
     assert_equal(row(buffer, 2), "█")
+
+
+def test_ratio_and_scrollbar_symbols_reject_invalid_configuration() raises:
+    with assert_raises(contains="ratio must be finite"):
+        _ = Ratio(-0.1)
+    with assert_raises(contains="ratio must be finite"):
+        _ = Ratio(Float64("nan"))
+    with assert_raises(contains="track must be exactly one terminal column"):
+        _ = ScrollbarSymbols("界", "█")
 
 
 def main() raises:

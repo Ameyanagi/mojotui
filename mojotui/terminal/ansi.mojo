@@ -1,8 +1,8 @@
 """Pure ANSI encoding for changed terminal cells."""
 
 from ..core.buffer import Buffer
-from ..core.geometry import Point
-from ..core.style import Color, Style
+from ..core.style import Color, ModifierSet, Style
+from .frame import FramePatch, diff_frame
 
 
 def _append_cursor(mut output: String, row: Int, column: Int):
@@ -13,11 +13,22 @@ def _append_cursor(mut output: String, row: Int, column: Int):
     output += "H"
 
 
-def _append_color(mut output: String, color: Color, foreground: Bool):
+def _append_color(mut output: String, color: Color, code: Int):
     if color.kind == Color.DEFAULT:
         return
+    if color.kind == Color.INDEXED and color.index() < 16 and code != 58:
+        var index = color.index()
+        var basic_code: Int
+        if code == 38:
+            basic_code = 30 + index if index < 8 else 90 + index - 8
+        else:
+            basic_code = 40 + index if index < 8 else 100 + index - 8
+        output += "\x1b["
+        output += String(basic_code)
+        output += "m"
+        return
     output += "\x1b["
-    output += "38" if foreground else "48"
+    output += String(code)
     if color.kind == Color.INDEXED:
         output += ";5;"
         output += String(color.index())
@@ -31,7 +42,12 @@ def _append_color(mut output: String, color: Color, foreground: Bool):
     output += "m"
 
 
-def _append_modifier(mut output: String, style: Style, modifier: Int, code: String):
+def _append_modifier(
+    mut output: String,
+    style: Style,
+    modifier: ModifierSet,
+    code: String,
+):
     if style.has(modifier):
         output += "\x1b["
         output += code
@@ -48,55 +64,54 @@ def _append_style(mut output: String, style: Style):
     _append_modifier(output, style, Style.REVERSED, "7")
     _append_modifier(output, style, Style.HIDDEN, "8")
     _append_modifier(output, style, Style.CROSSED_OUT, "9")
-    _append_color(output, style.foreground, True)
-    _append_color(output, style.background, False)
+    _append_color(output, style.foreground, 38)
+    _append_color(output, style.background, 48)
+    _append_color(output, style.underline_color, 58)
 
 
-def encode_ansi_diff(before: Buffer, after: Buffer) raises -> String:
-    """Encode the minimal changed cell runs using absolute ANSI cursor moves.
-
-    Coordinates are relative to the buffer area. The encoder starts and ends
-    in the default style, making each result independent from previous calls.
-    """
-    if not before.area.equals(after.area):
-        raise Error("ANSI diff buffers must have equal areas")
-
+def _encode_ansi_patch(patch: FramePatch) -> String:
+    """Encode one terminal-owned changed-cell patch with absolute positions."""
     var output = String()
     var emitted = False
     var cursor_x = -1
     var cursor_y = -1
     var active_style = Style.plain()
 
-    for y in range(after.area.y, after.area.bottom()):
-        for x in range(after.area.x, after.area.right()):
-            var point = Point(x, y)
-            var previous = before.cell(point)
-            var current = after.cell(point)
-            if previous.equals(current) or current.continuation:
-                continue
+    for index in range(len(patch.changes)):
+        var x = patch.changes[index].point.x
+        var y = patch.changes[index].point.y
 
-            if not emitted:
-                output += "\x1b[0m"
-                emitted = True
+        if not emitted:
+            output += "\x1b[0m"
+            emitted = True
 
-            if cursor_x != x or cursor_y != y:
-                _append_cursor(
-                    output,
-                    y - after.area.y + 1,
-                    x - after.area.x + 1,
-                )
+        if cursor_x != x or cursor_y != y:
+            _append_cursor(
+                output,
+                y - patch.area.y + 1,
+                x - patch.area.x + 1,
+            )
 
-            if not active_style.equals(current.style):
-                _append_style(output, current.style)
-                active_style = current.style.copy()
+        if not active_style.equals(patch.changes[index].cell.style):
+            _append_style(output, patch.changes[index].cell.style)
+            active_style = patch.changes[index].cell.style.copy()
 
-            output += current.symbol
-            cursor_x = x + current.width
-            cursor_y = y
+        output += patch.changes[index].cell.symbol
+        cursor_x = x + patch.changes[index].cell.width
+        cursor_y = y
 
     if emitted and not active_style.equals(Style.plain()):
         output += "\x1b[0m"
     return output^
+
+
+def encode_ansi_diff(before: Buffer, after: Buffer) raises -> String:
+    """Encode changed cells using absolute ANSI cursor moves.
+
+    This compatibility helper delegates diff collection to the same
+    terminal-owned patch representation used by `Terminal`.
+    """
+    return _encode_ansi_patch(diff_frame(before, after))
 
 
 def inline_reserve_sequence(height: Int) -> String:
@@ -128,35 +143,31 @@ def _append_relative_position(
         output += "C"
 
 
-def encode_ansi_inline_diff(before: Buffer, after: Buffer) raises -> String:
-    """Encode changes relative to a cursor directly below a fixed viewport."""
-    if not before.area.equals(after.area):
-        raise Error("ANSI inline diff buffers must have equal areas")
-
+def _encode_ansi_inline_patch(patch: FramePatch) -> String:
+    """Encode a changed-cell patch relative to a fixed viewport anchor."""
     var output = String()
     var emitted = False
-    for y in range(after.area.y, after.area.bottom()):
-        for x in range(after.area.x, after.area.right()):
-            var point = Point(x, y)
-            var previous = before.cell(point)
-            var current = after.cell(point)
-            if previous.equals(current) or current.continuation:
-                continue
-            if not emitted:
-                output += "\x1b[s"
-                emitted = True
-            _append_relative_position(
-                output,
-                after.area.height,
-                y - after.area.y,
-                x - after.area.x,
-            )
-            _append_style(output, current.style)
-            output += current.symbol
+    for index in range(len(patch.changes)):
+        if not emitted:
+            output += "\x1b[s"
+            emitted = True
+        _append_relative_position(
+            output,
+            patch.area.height,
+            patch.changes[index].point.y - patch.area.y,
+            patch.changes[index].point.x - patch.area.x,
+        )
+        _append_style(output, patch.changes[index].cell.style)
+        output += patch.changes[index].cell.symbol
 
     if emitted:
         output += "\x1b[u\x1b[0m"
     return output^
+
+
+def encode_ansi_inline_diff(before: Buffer, after: Buffer) raises -> String:
+    """Encode changes relative to a cursor directly below a fixed viewport."""
+    return _encode_ansi_inline_patch(diff_frame(before, after))
 
 
 def inline_clear_sequence(height: Int) -> String:

@@ -12,11 +12,24 @@ from .highlight import HighlightState
 from .selection import SelectionSet, display_column
 
 
-struct WrapMode:
+struct WrapMode(Copyable, Equatable, ImplicitlyCopyable):
     """Logical-line or viewport-width editor rendering."""
 
-    comptime NONE = 0
-    comptime SOFT = 1
+    comptime NONE = WrapMode(0, _validated=True)
+    comptime SOFT = WrapMode(1, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 1:
+            raise Error("invalid editor wrap mode")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
 
 
 struct EditorState(Movable):
@@ -169,7 +182,7 @@ struct Editor(Copyable, StatefulWidget):
 
     comptime State = EditorState
 
-    var wrap_mode: Int
+    var wrap_mode: WrapMode
     var tab_width: Int
     var show_line_numbers: Bool
     var ambiguous_is_wide: Bool
@@ -182,7 +195,7 @@ struct Editor(Copyable, StatefulWidget):
 
     def __init__(
         out self,
-        wrap_mode: Int = WrapMode.NONE,
+        wrap_mode: WrapMode = WrapMode.NONE,
         tab_width: Int = 4,
         show_line_numbers: Bool = False,
         ambiguous_is_wide: Bool = False,
@@ -191,7 +204,7 @@ struct Editor(Copyable, StatefulWidget):
         cursor_style: Style = Style(modifiers=Style.REVERSED),
         line_number_style: Style = Style(modifiers=Style.DIM),
     ):
-        self.wrap_mode = WrapMode.SOFT if wrap_mode == WrapMode.SOFT else WrapMode.NONE
+        self.wrap_mode = wrap_mode
         self.tab_width = max(tab_width, 1)
         self.show_line_numbers = show_line_numbers
         self.ambiguous_is_wide = ambiguous_is_wide
@@ -205,7 +218,7 @@ struct Editor(Copyable, StatefulWidget):
     @staticmethod
     def with_block(
         block: Block,
-        wrap_mode: Int = WrapMode.NONE,
+        wrap_mode: WrapMode = WrapMode.NONE,
         tab_width: Int = 4,
         show_line_numbers: Bool = False,
         ambiguous_is_wide: Bool = False,

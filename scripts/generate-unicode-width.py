@@ -27,6 +27,10 @@ SOURCES = {
         f"https://www.unicode.org/Public/{UNICODE_VERSION}/ucd/emoji/emoji-data.txt",
         "2cb2bb9455cda83e8481541ecf5b6dfda66a3bb89efa3fa7c5297eccf607b72b",
     ),
+    "PropList.txt": (
+        f"https://www.unicode.org/Public/{UNICODE_VERSION}/ucd/PropList.txt",
+        "130dcddcaadaf071008bdfce1e7743e04fdfbc910886f017d9f9ac931d8c64dd",
+    ),
 }
 OUTPUT = Path(__file__).resolve().parent.parent / "mojotui/text/_unicode_width_data.mojo"
 PROPERTY_RE = re.compile(
@@ -96,6 +100,7 @@ def generate() -> str:
     east_asian = properties(fetch("EastAsianWidth.txt"))
     categories = properties(fetch("DerivedGeneralCategory.txt"))
     emoji = properties(fetch("emoji-data.txt"))
+    properties_list = properties(fetch("PropList.txt"))
 
     zero_width = merge(
         categories.get("Mn", [])
@@ -110,6 +115,7 @@ def generate() -> str:
     )
     ambiguous = merge(east_asian.get("A", []))
     emoji_codepoints = merge(emoji.get("Emoji", []))
+    whitespace = merge(properties_list.get("White_Space", []))
 
     lines = [
         '"""Generated Unicode terminal-width lookup tables. Do not edit."""',
@@ -134,6 +140,7 @@ def generate() -> str:
         ("is_wide", wide),
         ("is_ambiguous", ambiguous),
         ("is_emoji", emoji_codepoints),
+        ("is_whitespace", whitespace),
     ):
         lines.extend(emit_lookup(name, intervals))
         lines.append("")

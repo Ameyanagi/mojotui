@@ -8,6 +8,7 @@ from mojotui import (
     Cell,
     Command,
     HeadlessBackend,
+    InitResult,
     ManualClock,
     Rect,
     Subscription,
@@ -45,8 +46,8 @@ struct RuntimeApplication(Application, Copyable):
     def __init__(out self):
         pass
 
-    def init(mut self) raises -> Self.Model:
-        return Model()
+    def init(mut self) raises -> InitResult[Self.Model, Self.Effect]:
+        return InitResult[Self.Model, Self.Effect].ready(Model())
 
     def update(
         mut self, mut model: Self.Model, var message: Self.Message

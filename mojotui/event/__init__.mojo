@@ -4,8 +4,12 @@ from .input import (
     FocusEvent,
     InputEvent,
     InputParser,
+    KeyCode,
     KeyEvent,
+    KeyModifiers,
+    MouseButton,
     MouseEvent,
+    MouseKind,
     PasteEvent,
     UnknownEvent,
 )

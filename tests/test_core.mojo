@@ -6,7 +6,19 @@ from std.testing import (
     assert_true,
 )
 
-from mojotui import Buffer, Cell, Point, Rect, Size, Style
+from mojotui import Buffer, Cell, Color, Point, Rect, Size, Style, StylePatch
+
+
+def _assert_wide_cell_invariants(buffer: Buffer) raises:
+    for y in range(buffer.area.y, buffer.area.bottom()):
+        for x in range(buffer.area.x, buffer.area.right()):
+            var cell = buffer.cell(Point(x, y))
+            if cell.continuation:
+                assert_true(x > buffer.area.x)
+                assert_equal(buffer.cell(Point(x - 1, y)).width, 2)
+            if cell.width == 2:
+                assert_true(x + 1 < buffer.area.right())
+                assert_true(buffer.cell(Point(x + 1, y)).continuation)
 
 
 def test_size_normalizes_negative_dimensions() raises:
@@ -86,11 +98,142 @@ def test_buffer_fill_clips() raises:
     assert_equal(buffer.cell(Point(2, 1)).symbol, "x")
 
 
+def test_buffer_fill_clears_wide_leader_across_left_boundary() raises:
+    var buffer = Buffer(Rect(0, 0, 3, 1))
+    _ = buffer.set_grapheme({0, 0}, "界")
+    buffer.fill(Rect(1, 0, 1, 1), Cell("x"))
+    assert_equal(buffer.cell({0, 0}).symbol, " ")
+    assert_equal(buffer.cell({1, 0}).symbol, "x")
+    _assert_wide_cell_invariants(buffer)
+
+
+def test_buffer_fill_clears_wide_continuation_across_right_boundary() raises:
+    var buffer = Buffer(Rect(0, 0, 3, 1))
+    _ = buffer.set_grapheme({1, 0}, "界")
+    buffer.fill(Rect(1, 0, 1, 1), Cell("x"))
+    assert_equal(buffer.cell({1, 0}).symbol, "x")
+    assert_equal(buffer.cell({2, 0}).symbol, " ")
+    assert_false(buffer.cell({2, 0}).continuation)
+    _assert_wide_cell_invariants(buffer)
+
+
 def test_buffer_diff_counts_changed_cells() raises:
     var before = Buffer(Rect(0, 0, 2, 2))
     var after = Buffer(Rect(0, 0, 2, 2))
     _ = after.set_cell(Point(1, 1), Cell("x"))
     assert_equal(before.changed_cell_count(after), 1)
+
+
+def test_buffer_differences_are_row_major_and_include_both_cells() raises:
+    var before = Buffer(Rect(3, 4, 2, 2))
+    var after = Buffer(Rect(3, 4, 2, 2))
+    _ = after.set_grapheme({4, 4}, "x")
+    _ = after.set_grapheme({3, 5}, "y")
+    var changes = before.differences(after)
+    assert_equal(len(changes), 2)
+    assert_true(changes[0].point.equals(Point(4, 4)))
+    assert_equal(changes[0].before.symbol, " ")
+    assert_equal(changes[0].after.symbol, "x")
+    assert_true(changes[1].point.equals(Point(3, 5)))
+
+
+def test_buffer_differences_reject_mismatched_areas() raises:
+    with assert_raises(contains="different areas"):
+        _ = Buffer(Rect(0, 0, 1, 1)).differences(Buffer(Rect(0, 0, 2, 1)))
+
+
+def test_style_patches_preserve_unspecified_fields_and_compose() raises:
+    var base = Style(
+        foreground=Color.indexed(1),
+        background=Color.indexed(2),
+        modifiers=Style.BOLD | Style.ITALIC,
+    )
+    var first = StylePatch(
+        background=Color.indexed(3),
+        add_modifiers=Style.UNDERLINED,
+        remove_modifiers=Style.BOLD,
+    )
+    var second = StylePatch(
+        foreground=Color.default(),
+        add_modifiers=Style.BOLD,
+        remove_modifiers=Style.ITALIC,
+    )
+    var sequential = base.patched(first).patched(second)
+    var composed = base.patched(first.then(second))
+    assert_true(sequential.equals(composed))
+    assert_true(composed.foreground.equals(Color.default()))
+    assert_true(composed.background.equals(Color.indexed(3)))
+    assert_true(composed.has(Style.BOLD))
+    assert_true(composed.has(Style.UNDERLINED))
+    assert_false(composed.has(Style.ITALIC))
+
+
+def test_buffer_style_patch_preserves_wide_cell_footprint() raises:
+    var buffer = Buffer(Rect(0, 0, 2, 1))
+    _ = buffer.set_grapheme({0, 0}, "界")
+    var area = buffer.area.copy()
+    buffer.patch_style(
+        area,
+        StylePatch(
+            foreground=Color.indexed(4),
+            add_modifiers=Style.BOLD,
+        ),
+    )
+    assert_equal(buffer.cell({0, 0}).symbol, "界")
+    assert_true(buffer.cell({1, 0}).continuation)
+    assert_true(buffer.cell({0, 0}).style.has(Style.BOLD))
+    assert_true(buffer.cell({1, 0}).style.has(Style.BOLD))
+
+
+def test_buffer_string_write_reports_wide_grapheme_overflow() raises:
+    var buffer = Buffer(Rect(0, 0, 3, 1))
+    var result = buffer.set_string({0, 0}, "ab界")
+    assert_equal(result.graphemes_written, 2)
+    assert_equal(result.columns_written, 2)
+    assert_equal(result.end.x, 2)
+    assert_true(result.truncated)
+    assert_equal(buffer.cell({0, 0}).symbol, "a")
+    assert_equal(buffer.cell({1, 0}).symbol, "b")
+    assert_equal(buffer.cell({2, 0}).symbol, " ")
+    assert_false(buffer.cell({2, 0}).continuation)
+
+
+def test_buffer_resize_drops_partial_wide_cells() raises:
+    var buffer = Buffer(Rect(0, 0, 3, 1))
+    _ = buffer.set_grapheme({1, 0}, "界")
+    buffer.resize(Rect(0, 0, 2, 1))
+    assert_equal(buffer.cell({1, 0}).symbol, " ")
+    assert_false(buffer.cell({1, 0}).continuation)
+
+
+def test_buffer_merge_expands_and_overlays_complete_cells() raises:
+    var base = Buffer(Rect(0, 0, 2, 1))
+    _ = base.set_grapheme({0, 0}, "a")
+    var overlay = Buffer(Rect(1, 0, 2, 1))
+    _ = overlay.set_grapheme({1, 0}, "界")
+    base.merge(overlay)
+    assert_equal(base.area.width, 3)
+    assert_equal(base.cell({0, 0}).symbol, "a")
+    assert_equal(base.cell({1, 0}).symbol, "界")
+    assert_true(base.cell({2, 0}).continuation)
+
+
+def test_buffer_conveniences_preserve_wide_invariants_across_widths() raises:
+    for target_width in range(7):
+        var buffer = Buffer(Rect(-2, 3, 6, 1))
+        _ = buffer.set_string({-2, 3}, "a界bc")
+        buffer.patch_style(
+            Rect(-1, 3, 4, 1),
+            StylePatch(add_modifiers=Style.UNDERLINED),
+        )
+        buffer.resize(Rect(-2, 3, target_width, 1))
+        _assert_wide_cell_invariants(buffer)
+
+        var overlay = Buffer(Rect(-1, 3, 3, 1))
+        _ = overlay.set_string({-1, 3}, "界x")
+        buffer.merge(overlay)
+        _assert_wide_cell_invariants(buffer)
+        assert_equal(len(buffer.differences(buffer.copy())), 0)
 
 
 def test_cell_from_grapheme_uses_unicode_width() raises:

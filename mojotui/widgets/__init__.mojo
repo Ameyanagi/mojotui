@@ -1,6 +1,30 @@
 """Built-in stateless and explicitly stateful widgets."""
 
-from .basic import Block, Clear, Paragraph
-from .collection import List, ListItem, ListState, Row, Table, TableState
-from .data import Gauge, LineGauge, Sparkline
-from .navigation import Scrollbar, ScrollbarOrientation, ScrollbarState, Tabs
+from .basic import (
+    Block,
+    Borders,
+    BorderType,
+    Clear,
+    Fill,
+    Padding,
+    Paragraph,
+    TitlePosition,
+)
+from .collection import (
+    HighlightSpacing,
+    List,
+    ListItem,
+    ListState,
+    Row,
+    Table,
+    TableSelection,
+    TableState,
+)
+from .data import Gauge, LineGauge, Ratio, Sparkline
+from .navigation import (
+    Scrollbar,
+    ScrollbarOrientation,
+    ScrollbarState,
+    ScrollbarSymbols,
+    Tabs,
+)

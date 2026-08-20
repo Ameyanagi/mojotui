@@ -6,14 +6,22 @@ Run the system monitor from the repository root:
 pixi run dashboard
 ```
 
-The example opens a `TerminalSession`, constructs an `AnsiBackend`, and polls
-stdin and terminal size with `PosixReactor`. Every iteration creates a fresh
-buffer, renders the current model, and presents the diff.
+The example implements the typed `Application` contract and runs it through
+`TerminalApplicationHost`. The host owns `TerminalSession`, the `AnsiBackend`
+terminal, `PosixReactor`, `InputParser`, message processing, rendering, and
+orderly restoration. `Terminal` observes resize, computes each frame diff, and
+asks the backend to present changed cells.
 
 The screen uses nested horizontal and vertical layouts. Blocks, tabs, gauges, a
 sparkline, a stateful process table, and rich text all render into the same
-frame. A 100 ms timer advances deterministic sample data. No process inspection
-or network access occurs.
+frame. A separately scheduled 100 ms tick advances deterministic sample data;
+input traffic cannot starve it. No process inspection or network access occurs.
+
+At startup the example detects one `TerminalCapabilities` value, passes it to
+both `DashboardApplication` and `AnsiBackend`, and resolves the dashboard's
+adaptive accent, warning, and selection colors into `DashboardModel`. Light
+and dark palettes therefore share one render path, while every frame remains
+effect-free and every cell still contains a resolved `Color`.
 
 Controls:
 
@@ -21,7 +29,8 @@ Controls:
 - Tab, Left, and Right change the active tab.
 - `q` or Ctrl-C exits.
 
-The `handle_key` function mutates `DashboardModel`; render functions only read
-the model. This split is the same one expected by the `Application` trait, even
-though the example keeps its event loop explicit so each terminal operation is
-visible in one file.
+`on_input()` and `on_tick()` translate host observations into a closed
+`DashboardMessage` variant. `update()` alone mutates `DashboardModel`, while
+`view()` renders deterministically. The included no-op adapter demonstrates the
+runtime boundary without importing an executor; it can later be replaced by a
+concrete general-runtime adapter.

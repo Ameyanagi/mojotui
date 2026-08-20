@@ -1,47 +1,116 @@
 """A safe incremental parser for terminal input byte streams."""
 
-from std.collections import List
+from std.collections import List, Optional
 from std.utils import Variant
+
+
+struct KeyCode(Copyable, Equatable, ImplicitlyCopyable):
+    """Nominal semantic keyboard code independent of terminal bytes."""
+
+    comptime CHARACTER = KeyCode(0, _validated=True)
+    comptime ESCAPE = KeyCode(1, _validated=True)
+    comptime ENTER = KeyCode(2, _validated=True)
+    comptime TAB = KeyCode(3, _validated=True)
+    comptime BACKSPACE = KeyCode(4, _validated=True)
+    comptime UP = KeyCode(5, _validated=True)
+    comptime DOWN = KeyCode(6, _validated=True)
+    comptime RIGHT = KeyCode(7, _validated=True)
+    comptime LEFT = KeyCode(8, _validated=True)
+    comptime HOME = KeyCode(9, _validated=True)
+    comptime END = KeyCode(10, _validated=True)
+    comptime INSERT = KeyCode(11, _validated=True)
+    comptime DELETE = KeyCode(12, _validated=True)
+    comptime PAGE_UP = KeyCode(13, _validated=True)
+    comptime PAGE_DOWN = KeyCode(14, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 14:
+            raise Error("invalid key code")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
+
+
+struct KeyModifiers(Copyable, Equatable, ImplicitlyCopyable):
+    """Validated set of keyboard modifier flags."""
+
+    comptime NONE = KeyModifiers(0, _validated=True)
+    comptime SHIFT = KeyModifiers(1, _validated=True)
+    comptime ALT = KeyModifiers(2, _validated=True)
+    comptime CONTROL = KeyModifiers(4, _validated=True)
+
+    var _bits: Int
+
+    def __init__(out self, bits: Int, *, _validated: Bool):
+        self._bits = bits
+
+    def __init__(out self, bits: Int) raises:
+        if bits < 0 or (bits & ~7) != 0:
+            raise Error("invalid key modifier flags")
+        self._bits = bits
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._bits == other._bits
+
+    def contains(self, modifier: Self) -> Bool:
+        return (self._bits & modifier._bits) == modifier._bits
+
+    def union(self, modifier: Self) -> Self:
+        return Self(self._bits | modifier._bits, _validated=True)
 
 
 struct KeyEvent(Copyable):
     """A keyboard event with a semantic key code and modifier mask."""
 
-    comptime CHARACTER = 0
-    comptime ESCAPE = 1
-    comptime ENTER = 2
-    comptime TAB = 3
-    comptime BACKSPACE = 4
-    comptime UP = 5
-    comptime DOWN = 6
-    comptime RIGHT = 7
-    comptime LEFT = 8
-    comptime HOME = 9
-    comptime END = 10
-    comptime INSERT = 11
-    comptime DELETE = 12
-    comptime PAGE_UP = 13
-    comptime PAGE_DOWN = 14
+    comptime CHARACTER = KeyCode.CHARACTER
+    comptime ESCAPE = KeyCode.ESCAPE
+    comptime ENTER = KeyCode.ENTER
+    comptime TAB = KeyCode.TAB
+    comptime BACKSPACE = KeyCode.BACKSPACE
+    comptime UP = KeyCode.UP
+    comptime DOWN = KeyCode.DOWN
+    comptime RIGHT = KeyCode.RIGHT
+    comptime LEFT = KeyCode.LEFT
+    comptime HOME = KeyCode.HOME
+    comptime END = KeyCode.END
+    comptime INSERT = KeyCode.INSERT
+    comptime DELETE = KeyCode.DELETE
+    comptime PAGE_UP = KeyCode.PAGE_UP
+    comptime PAGE_DOWN = KeyCode.PAGE_DOWN
 
-    comptime SHIFT = 1
-    comptime ALT = 2
-    comptime CONTROL = 4
+    comptime NO_MODIFIERS = KeyModifiers.NONE
+    comptime SHIFT = KeyModifiers.SHIFT
+    comptime ALT = KeyModifiers.ALT
+    comptime CONTROL = KeyModifiers.CONTROL
 
-    var code: Int
+    var code: KeyCode
     var text: String
-    var modifiers: Int
+    var modifiers: KeyModifiers
 
-    def __init__(out self, code: Int, var text: String = "", modifiers: Int = 0):
+    def __init__(
+        out self,
+        code: KeyCode,
+        var text: String = "",
+        modifiers: KeyModifiers = KeyModifiers.NONE,
+    ):
         self.code = code
         self.text = text^
         self.modifiers = modifiers
 
     @staticmethod
-    def character(var text: String, modifiers: Int = 0) -> Self:
+    def character(
+        var text: String, modifiers: KeyModifiers = KeyModifiers.NONE
+    ) -> Self:
         return Self(Self.CHARACTER, text^, modifiers)
 
     @staticmethod
-    def named(code: Int, modifiers: Int = 0) -> Self:
+    def named(code: KeyCode, modifiers: KeyModifiers = KeyModifiers.NONE) -> Self:
         return Self(code, modifiers=modifiers)
 
 
@@ -63,33 +132,76 @@ struct FocusEvent(Copyable):
         self.focused = focused
 
 
+struct MouseKind(Copyable, Equatable, ImplicitlyCopyable):
+    """Nominal semantic kind of an SGR mouse event."""
+
+    comptime PRESS = MouseKind(0, _validated=True)
+    comptime RELEASE = MouseKind(1, _validated=True)
+    comptime MOVE = MouseKind(2, _validated=True)
+    comptime SCROLL_UP = MouseKind(3, _validated=True)
+    comptime SCROLL_DOWN = MouseKind(4, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 4:
+            raise Error("invalid mouse event kind")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
+
+
+struct MouseButton(Copyable, Equatable, ImplicitlyCopyable):
+    """Nominal physical mouse button; absence is represented by `None`."""
+
+    comptime LEFT = MouseButton(0, _validated=True)
+    comptime MIDDLE = MouseButton(1, _validated=True)
+    comptime RIGHT = MouseButton(2, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 2:
+            raise Error("invalid mouse button")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
+
+
 struct MouseEvent(Copyable):
     """An SGR mouse event in zero-based terminal coordinates."""
 
-    comptime PRESS = 0
-    comptime RELEASE = 1
-    comptime MOVE = 2
-    comptime SCROLL_UP = 3
-    comptime SCROLL_DOWN = 4
+    comptime PRESS = MouseKind.PRESS
+    comptime RELEASE = MouseKind.RELEASE
+    comptime MOVE = MouseKind.MOVE
+    comptime SCROLL_UP = MouseKind.SCROLL_UP
+    comptime SCROLL_DOWN = MouseKind.SCROLL_DOWN
 
-    comptime NONE = -1
-    comptime LEFT = 0
-    comptime MIDDLE = 1
-    comptime RIGHT = 2
+    comptime LEFT = MouseButton.LEFT
+    comptime MIDDLE = MouseButton.MIDDLE
+    comptime RIGHT = MouseButton.RIGHT
 
-    var kind: Int
-    var button: Int
+    var kind: MouseKind
+    var button: Optional[MouseButton]
     var x: Int
     var y: Int
-    var modifiers: Int
+    var modifiers: KeyModifiers
 
     def __init__(
         out self,
-        kind: Int,
-        button: Int,
+        kind: MouseKind,
+        button: Optional[MouseButton],
         x: Int,
         y: Int,
-        modifiers: Int = 0,
+        modifiers: KeyModifiers = KeyModifiers.NONE,
     ):
         self.kind = kind
         self.button = button
@@ -226,7 +338,7 @@ struct InputParser(Movable):
         mut self,
         mut events: List[InputEvent],
         offset: Int = 0,
-        modifiers: Int = 0,
+        modifiers: KeyModifiers = KeyModifiers.NONE,
     ) -> Bool:
         if self.pending_byte_count() <= offset:
             return False
@@ -270,7 +382,7 @@ struct InputParser(Movable):
                 return offset + 1
         return 0
 
-    def _key_code_for_final(self, final: Int) -> Int:
+    def _key_code_for_final(self, final: Int) -> Optional[KeyCode]:
         if final == 0x41:
             return KeyEvent.UP
         if final == 0x42:
@@ -283,7 +395,7 @@ struct InputParser(Movable):
             return KeyEvent.HOME
         if final == 0x46:
             return KeyEvent.END
-        return -1
+        return None
 
     def _decimal(self, start: Int, end: Int) -> Int:
         if start >= end:
@@ -320,21 +432,27 @@ struct InputParser(Movable):
         if encoded < 0 or column <= 0 or row <= 0:
             return False
 
-        var modifiers = 0
+        var modifiers = KeyModifiers.NONE
         if encoded & 4:
-            modifiers |= KeyEvent.SHIFT
+            modifiers = modifiers.union(KeyEvent.SHIFT)
         if encoded & 8:
-            modifiers |= KeyEvent.ALT
+            modifiers = modifiers.union(KeyEvent.ALT)
         if encoded & 16:
-            modifiers |= KeyEvent.CONTROL
+            modifiers = modifiers.union(KeyEvent.CONTROL)
 
         var low_button = encoded & 3
-        var button = low_button if low_button < 3 else MouseEvent.NONE
+        var button: Optional[MouseButton] = None
+        if low_button == 0:
+            button = MouseEvent.LEFT
+        elif low_button == 1:
+            button = MouseEvent.MIDDLE
+        elif low_button == 2:
+            button = MouseEvent.RIGHT
         var kind = MouseEvent.PRESS
         var final = Int(self._byte(length - 1))
         if encoded & 64:
             kind = MouseEvent.SCROLL_UP if low_button == 0 else MouseEvent.SCROLL_DOWN
-            button = MouseEvent.NONE
+            button = None
         elif final == 0x6D:
             kind = MouseEvent.RELEASE
         elif encoded & 32:
@@ -357,9 +475,9 @@ struct InputParser(Movable):
         if length == 3:
             var final = Int(self._byte(2))
             var code = self._key_code_for_final(final)
-            if code >= 0:
+            if code:
                 self._consume(length)
-                events.append(InputEvent(KeyEvent.named(code)))
+                events.append(InputEvent(KeyEvent.named(code.value())))
                 return True
             if final == 0x5A:
                 self._consume(length)
@@ -374,7 +492,7 @@ struct InputParser(Movable):
             var final = Int(self._byte(3))
             if final == 0x7E:
                 var parameter = Int(self._byte(2)) - 0x30
-                var code = -1
+                var code: Optional[KeyCode] = None
                 if parameter == 1:
                     code = KeyEvent.HOME
                 elif parameter == 2:
@@ -387,17 +505,27 @@ struct InputParser(Movable):
                     code = KeyEvent.PAGE_UP
                 elif parameter == 6:
                     code = KeyEvent.PAGE_DOWN
-                if code >= 0:
+                if code:
                     self._consume(length)
-                    events.append(InputEvent(KeyEvent.named(code)))
+                    events.append(InputEvent(KeyEvent.named(code.value())))
                     return True
 
         if length == 6 and Int(self._byte(2)) == 0x31 and Int(self._byte(3)) == 0x3B:
             var modifier_parameter = Int(self._byte(4)) - 0x30
             var code = self._key_code_for_final(Int(self._byte(5)))
-            if modifier_parameter >= 2 and modifier_parameter <= 8 and code >= 0:
+            if modifier_parameter >= 2 and modifier_parameter <= 8 and code:
                 self._consume(length)
-                events.append(InputEvent(KeyEvent.named(code, modifier_parameter - 1)))
+                events.append(
+                    InputEvent(
+                        KeyEvent.named(
+                            code.value(),
+                            KeyModifiers(
+                                modifier_parameter - 1,
+                                _validated=True,
+                            ),
+                        )
+                    )
+                )
                 return True
 
         if length == 6 and self._matches_paste_delimiter(0, 0x30):

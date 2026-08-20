@@ -1,42 +1,152 @@
 """Statically dispatched terminal backends."""
 
+from std.collections import Optional
 from std.io import FileDescriptor
 
 from ..core.buffer import Buffer
+from ..core.capabilities import TerminalCapabilities
 from ..core.cell import Cell
-from ..core.geometry import Point, Rect
+from ..core.geometry import Point, Rect, Size
 from ..platform import terminal_size
 from .ansi import (
-    encode_ansi_diff,
-    encode_ansi_inline_diff,
+    _encode_ansi_inline_patch,
+    _encode_ansi_patch,
     inline_clear_sequence,
     inline_reserve_sequence,
 )
+from .frame import CompletedFrame, Frame, FramePatch, diff_frame
+from .capabilities import detect_terminal_capabilities
 
 
 trait Backend(Deinitable, Movable):
-    """A destination for complete terminal cell buffers."""
+    """A destination for terminal-owned changed-cell patches."""
 
-    def viewport(self) -> Rect:
+    def capabilities(self) -> TerminalCapabilities:
+        """Return the color and appearance contract configured for output."""
+        return TerminalCapabilities.conservative()
+
+    def viewport(mut self) raises -> Rect:
         ...
 
-    def present(mut self, buffer: Buffer) raises:
+    def resize_viewport(mut self, size: Size) raises:
+        """Apply a host-observed terminal size when the backend is resizable."""
+        pass
+
+    def present(mut self, patch: FramePatch) raises:
+        ...
+
+    def clear(mut self) raises:
+        ...
+
+    def flush(mut self) raises:
         ...
 
 
 struct Terminal[B: Backend](Movable):
-    """A terminal parameterized by one concrete backend type."""
+    """A frame transaction owner parameterized by one concrete backend."""
 
     var backend: Self.B
+    var previous: Buffer
+    var available: Optional[Buffer]
+    var force_full_redraw: Bool
+    var frame_count: Int
 
-    def __init__(out self, var backend: Self.B):
+    def __init__(out self, var backend: Self.B) raises:
+        var area = backend.viewport()
+        self.previous = Buffer(area)
+        self.available = Buffer(area)
         self.backend = backend^
+        self.force_full_redraw = True
+        self.frame_count = 0
 
-    def viewport(self) -> Rect:
-        return self.backend.viewport()
+    def _refresh_viewport(mut self) raises -> Rect:
+        var observed = self.backend.viewport()
+        if not observed.equals(self.previous.area):
+            self.previous = Buffer(observed)
+            self.available = Buffer(observed)
+            self.force_full_redraw = True
+        return observed^
 
-    def present(mut self, buffer: Buffer) raises:
-        self.backend.present(buffer)
+    def viewport(mut self) raises -> Rect:
+        """Return the current backend viewport and prepare resize state."""
+        return self._refresh_viewport()
+
+    def capabilities(self) -> TerminalCapabilities:
+        """Return the backend capability value used for theme resolution."""
+        return self.backend.capabilities()
+
+    def begin_frame(mut self) raises -> Frame:
+        """Prepare a blank frame against one stable observed viewport."""
+        var area = self._refresh_viewport()
+        if self.available:
+            var buffer = self.available.take()
+            buffer.clear()
+            return Frame(buffer^, self.frame_count)
+        return Frame(area, self.frame_count)
+
+    def finish_frame(mut self, var frame: Frame) raises -> CompletedFrame:
+        """Diff and present one frame, committing state only after success."""
+        if frame.base_frame_count != self.frame_count:
+            raise Error("frame was prepared from a stale terminal generation")
+        if not frame.buffer.area.equals(self.previous.area):
+            raise Error("completed frame does not match terminal viewport")
+        if frame.cursor and not frame.buffer.area.contains(frame.cursor.value()):
+            raise Error("requested cursor is outside the completed frame")
+
+        var full_redraw = self.force_full_redraw
+        var cursor = frame.cursor.copy()
+        var patch = diff_frame(
+            self.previous,
+            frame.buffer,
+            full_redraw,
+            cursor,
+        )
+        var changed = len(patch.changes)
+        self.backend.present(patch)
+        var current = frame^.take_buffer()
+        var reusable = self.previous^
+        self.previous = current^
+        self.available = reusable^
+        self.force_full_redraw = False
+        self.frame_count += 1
+        return CompletedFrame(
+            self.previous.area,
+            self.frame_count,
+            changed,
+            full_redraw,
+            cursor,
+        )
+
+    def present(mut self, var buffer: Buffer) raises -> CompletedFrame:
+        """Compatibility path for callers that already built a complete buffer."""
+        var frame = Frame(buffer.area, self.frame_count)
+        frame.buffer = buffer^
+        return self.finish_frame(frame^)
+
+    def invalidate(mut self):
+        """Force the next completed frame to repaint the entire viewport."""
+        self.force_full_redraw = True
+
+    def handle_resize(mut self, size: Size) raises:
+        """Forward a host resize and invalidate terminal-owned frame history."""
+        self.backend.resize_viewport(size)
+        self.invalidate()
+
+    def clear(mut self) raises:
+        """Clear backend output and reset terminal-owned frame history."""
+        self.backend.clear()
+        self.previous.clear()
+        if self.available:
+            self.available.value().clear()
+        self.force_full_redraw = False
+
+    def flush(mut self) raises:
+        """Flush pending backend output when its transport buffers writes."""
+        self.backend.flush()
+
+    def last_frame(self) -> Buffer:
+        """Return a snapshot of the last successfully presented frame."""
+        return self.previous.copy()
 
 
 struct HeadlessBackend(Backend):
@@ -44,19 +154,59 @@ struct HeadlessBackend(Backend):
 
     var current: Buffer
     var presentation_count: Int
+    var cursor: Optional[Point]
+    var terminal_capabilities: TerminalCapabilities
 
-    def __init__(out self, area: Rect) raises:
+    def __init__(
+        out self,
+        area: Rect,
+        capabilities: TerminalCapabilities = TerminalCapabilities.headless(),
+    ) raises:
         self.current = Buffer(area)
         self.presentation_count = 0
+        self.cursor = None
+        self.terminal_capabilities = capabilities
 
-    def viewport(self) -> Rect:
+    def capabilities(self) -> TerminalCapabilities:
+        return self.terminal_capabilities
+
+    def viewport(mut self) raises -> Rect:
         return self.current.area.copy()
 
-    def present(mut self, buffer: Buffer) raises:
-        if not buffer.area.equals(self.current.area):
-            raise Error("presented buffer does not match backend viewport")
-        self.current = buffer.copy()
+    def resize(mut self, area: Rect) raises:
+        """Change the deterministic viewport observed by the next frame."""
+        self.current = Buffer(area)
+        self.cursor = None
+
+    def resize_viewport(mut self, size: Size) raises:
+        self.resize(
+            Rect(
+                self.current.area.x,
+                self.current.area.y,
+                size.width,
+                size.height,
+            )
+        )
+
+    def present(mut self, patch: FramePatch) raises:
+        if patch.full_redraw:
+            self.current = Buffer(patch.area)
+        elif not patch.area.equals(self.current.area):
+            raise Error("frame patch does not match headless viewport")
+        for index in range(len(patch.changes)):
+            if not self.current.set_cell(
+                patch.changes[index].point, patch.changes[index].cell
+            ):
+                raise Error("headless frame patch contains an invalid cell")
+        self.cursor = patch.cursor.copy()
         self.presentation_count += 1
+
+    def clear(mut self) raises:
+        self.current.clear()
+        self.cursor = None
+
+    def flush(mut self) raises:
+        pass
 
     def cell(self, point: Point) raises -> Cell:
         return self.current.cell(point)
@@ -65,53 +215,107 @@ struct HeadlessBackend(Backend):
 struct AnsiBackend(Backend):
     """A stateful ANSI backend that emits only changed cells after startup."""
 
-    var current: Buffer
+    var area: Rect
     var output_descriptor: Int
     var first_frame: Bool
+    var dynamic_viewport: Bool
+    var cursor: Optional[Point]
+    var terminal_capabilities: TerminalCapabilities
 
     def __init__(
         out self,
         area: Rect,
         output_descriptor: Int = 1,
-    ) raises:
-        self.current = Buffer(area)
+        dynamic_viewport: Bool = False,
+        capabilities: Optional[TerminalCapabilities] = None,
+    ):
+        self.area = area.copy()
         self.output_descriptor = output_descriptor
         self.first_frame = True
+        self.dynamic_viewport = dynamic_viewport
+        self.cursor = None
+        self.terminal_capabilities = (
+            capabilities.value().copy() if capabilities else detect_terminal_capabilities()
+        )
 
     @staticmethod
-    def from_terminal(output_descriptor: Int = 1) raises -> Self:
+    def from_terminal(
+        output_descriptor: Int = 1,
+        capabilities: Optional[TerminalCapabilities] = None,
+    ) raises -> Self:
         var observed = terminal_size(output_descriptor)
         return Self(
             Rect(0, 0, observed.columns, observed.rows),
             output_descriptor,
+            True,
+            capabilities,
         )
 
-    def viewport(self) -> Rect:
-        return self.current.area.copy()
+    def capabilities(self) -> TerminalCapabilities:
+        return self.terminal_capabilities
+
+    def viewport(mut self) raises -> Rect:
+        if self.dynamic_viewport:
+            _ = self.refresh_viewport()
+        return self.area.copy()
 
     def refresh_viewport(mut self) raises -> Bool:
         """Recreate the previous-frame buffer after a terminal resize."""
         var observed = terminal_size(self.output_descriptor)
-        if (
-            observed.columns == self.current.area.width
-            and observed.rows == self.current.area.height
-        ):
+        if observed.columns == self.area.width and observed.rows == self.area.height:
             return False
-        self.current = Buffer(Rect(0, 0, observed.columns, observed.rows))
+        self.area = Rect(0, 0, observed.columns, observed.rows)
         self.first_frame = True
+        self.cursor = None
         return True
 
-    def present(mut self, buffer: Buffer) raises:
-        if not buffer.area.equals(self.current.area):
-            raise Error("presented buffer does not match ANSI backend viewport")
-        var encoded = encode_ansi_diff(self.current, buffer)
+    def resize_viewport(mut self, size: Size) raises:
+        if not self.dynamic_viewport:
+            return
+        if size.width == self.area.width and size.height == self.area.height:
+            return
+        self.area = Rect(0, 0, size.width, size.height)
+        self.cursor = None
+
+    def present(mut self, patch: FramePatch) raises:
+        if not patch.area.equals(self.area):
+            raise Error("frame patch does not match ANSI backend viewport")
+        var encoded = _encode_ansi_patch(patch)
         var output = FileDescriptor(self.output_descriptor)
-        if self.first_frame:
+        if self.first_frame or patch.full_redraw:
             output.write_string("\x1b[2J\x1b[H")
             self.first_frame = False
         if encoded:
             output.write_string(encoded)
-        self.current = buffer.copy()
+        var cursor_output = String()
+        if patch.cursor:
+            var point = patch.cursor.value().copy()
+            if encoded or not self.cursor or not self.cursor.value().equals(point):
+                cursor_output += "\x1b["
+                cursor_output += String(point.y - patch.area.y + 1)
+                cursor_output += ";"
+                cursor_output += String(point.x - patch.area.x + 1)
+                cursor_output += "H"
+            if not self.cursor:
+                cursor_output += "\x1b[?25h"
+        elif self.cursor:
+            cursor_output += "\x1b[?25l"
+        if cursor_output:
+            output.write_string(cursor_output)
+        self.cursor = patch.cursor.copy()
+
+    def clear(mut self) raises:
+        var output = FileDescriptor(self.output_descriptor)
+        var encoded = String()
+        if self.cursor:
+            encoded += "\x1b[?25l"
+        encoded += "\x1b[2J\x1b[H"
+        output.write_string(encoded)
+        self.first_frame = False
+        self.cursor = None
+
+    def flush(mut self) raises:
+        pass
 
 
 struct InlineBackend(Backend):
@@ -122,42 +326,96 @@ struct InlineBackend(Backend):
     while this backend is active.
     """
 
-    var current: Buffer
+    var area: Rect
     var output_descriptor: Int
     var first_frame: Bool
+    var cursor: Optional[Point]
+    var terminal_capabilities: TerminalCapabilities
 
     def __init__(
         out self,
         width: Int,
         height: Int,
         output_descriptor: Int = 1,
+        capabilities: Optional[TerminalCapabilities] = None,
     ) raises:
         if output_descriptor < 0:
             raise Error("inline output descriptor must be non-negative")
-        self.current = Buffer(Rect(0, 0, max(width, 0), max(height, 0)))
+        self.area = Rect(0, 0, max(width, 0), max(height, 0))
         self.output_descriptor = output_descriptor
         self.first_frame = True
+        self.cursor = None
+        self.terminal_capabilities = (
+            capabilities.value().copy() if capabilities else detect_terminal_capabilities()
+        )
 
-    def viewport(self) -> Rect:
-        return self.current.area.copy()
+    def capabilities(self) -> TerminalCapabilities:
+        return self.terminal_capabilities
 
-    def present(mut self, buffer: Buffer) raises:
-        if not buffer.area.equals(self.current.area):
-            raise Error("presented buffer does not match inline backend viewport")
+    def viewport(mut self) raises -> Rect:
+        return self.area.copy()
+
+    def resize_viewport(mut self, size: Size) raises:
+        """Follow terminal width while retaining the configured inline height."""
+        if size.width == self.area.width:
+            return
+        self.area = Rect(self.area.x, self.area.y, size.width, self.area.height)
+
+    def _return_to_anchor(mut self, mut output: String):
+        if not self.cursor:
+            return
+        var point = self.cursor.value().copy()
+        output += "\x1b[?25l"
+        var downward = self.area.bottom() - point.y
+        if downward > 0:
+            output += "\x1b["
+            output += String(downward)
+            output += "B"
+        output += "\r"
+        self.cursor = None
+
+    def _place_cursor(mut self, mut output: String, point: Point):
+        var upward = self.area.bottom() - point.y
+        if upward > 0:
+            output += "\x1b["
+            output += String(upward)
+            output += "A"
+        output += "\r"
+        var column = point.x - self.area.x
+        if column > 0:
+            output += "\x1b["
+            output += String(column)
+            output += "C"
+        output += "\x1b[?25h"
+        self.cursor = point.copy()
+
+    def present(mut self, patch: FramePatch) raises:
+        if not patch.area.equals(self.area):
+            raise Error("frame patch does not match inline backend viewport")
         var output = FileDescriptor(self.output_descriptor)
+        var encoded = String()
+        self._return_to_anchor(encoded)
         if self.first_frame:
-            output.write_string(inline_reserve_sequence(self.current.area.height))
+            encoded += inline_reserve_sequence(self.area.height)
             self.first_frame = False
-        var encoded = encode_ansi_inline_diff(self.current, buffer)
+        elif patch.full_redraw:
+            encoded += inline_clear_sequence(self.area.height)
+        encoded += _encode_ansi_inline_patch(patch)
+        if patch.cursor:
+            self._place_cursor(encoded, patch.cursor.value())
         if encoded:
             output.write_string(encoded)
-        self.current = buffer.copy()
 
     def clear(mut self):
         """Erase the owned rows; the next presentation reserves them again."""
         if self.first_frame:
             return
+        var encoded = String()
+        self._return_to_anchor(encoded)
+        encoded += inline_clear_sequence(self.area.height)
         var output = FileDescriptor(self.output_descriptor)
-        output.write_string(inline_clear_sequence(self.current.area.height))
-        self.current.clear()
+        output.write_string(encoded)
         self.first_frame = True
+
+    def flush(mut self) raises:
+        pass

@@ -7,23 +7,42 @@ from ..event.input import KeyEvent
 from .commands import EditorCommand, EditorCommandKind
 
 
-struct ControllerActionKind:
-    comptime EDIT = 0
-    comptime ENTER_INSERT = 1
-    comptime ENTER_NORMAL = 2
+struct ControllerActionKind(Copyable, Equatable, ImplicitlyCopyable):
+    """Nominal editor-controller transition or edit action."""
+
+    comptime EDIT = ControllerActionKind(0, _validated=True)
+    comptime ENTER_INSERT = ControllerActionKind(1, _validated=True)
+    comptime ENTER_NORMAL = ControllerActionKind(2, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 2:
+            raise Error("invalid editor controller action kind")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
 
 
 struct EditorControllerAction(Copyable):
-    var kind: Int
-    var command: EditorCommand
+    var kind: ControllerActionKind
+    var command: Optional[EditorCommand]
 
-    def __init__(out self, kind: Int, command: EditorCommand = EditorCommand(0)):
+    def __init__(
+        out self,
+        kind: ControllerActionKind,
+        command: Optional[EditorCommand] = None,
+    ):
         self.kind = kind
         self.command = command.copy()
 
     @staticmethod
     def edit(command: EditorCommand) -> Self:
-        return Self(ControllerActionKind.EDIT, command)
+        return Self(ControllerActionKind.EDIT, command.copy())
 
 
 def _bind_common(
@@ -234,7 +253,7 @@ def text_input_action(
     if (
         accepts_text
         and key.code == KeyEvent.CHARACTER
-        and key.modifiers == 0
+        and key.modifiers == KeyEvent.NO_MODIFIERS
         and key.text != ""
     ):
         return EditorControllerAction.edit(EditorCommand.insert(key.text.copy()))

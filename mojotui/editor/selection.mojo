@@ -1,6 +1,6 @@
 """Ordered multiple selections with grapheme-aware cursor navigation."""
 
-from std.collections import List
+from std.collections import List, Optional
 
 from ..text.width import grapheme_width
 from .document import Document
@@ -11,17 +11,17 @@ struct Selection(Copyable):
 
     var anchor: Int
     var head: Int
-    var desired_column: Int
+    var desired_column: Optional[UInt]
 
     def __init__(
         out self,
         anchor: Int = 0,
         head: Int = 0,
-        desired_column: Int = -1,
+        desired_column: Optional[UInt] = None,
     ):
         self.anchor = max(anchor, 0)
         self.head = max(head, 0)
-        self.desired_column = max(desired_column, -1)
+        self.desired_column = desired_column.copy()
 
     @staticmethod
     def caret(offset: Int) -> Self:
@@ -114,11 +114,11 @@ struct CursorMotion(Copyable):
     """A resulting offset plus the sticky display column for vertical motion."""
 
     var offset: Int
-    var desired_column: Int
+    var desired_column: Optional[UInt]
 
-    def __init__(out self, offset: Int, desired_column: Int = -1):
+    def __init__(out self, offset: Int, desired_column: Optional[UInt] = None):
         self.offset = offset
-        self.desired_column = desired_column
+        self.desired_column = desired_column.copy()
 
 
 def next_grapheme_offset(document: Document, offset: Int) raises -> Int:
@@ -217,15 +217,15 @@ def move_vertical(
     document: Document,
     offset: Int,
     line_delta: Int,
-    desired_column: Int = -1,
+    desired_column: Optional[UInt] = None,
     tab_width: Int = 4,
     ambiguous_is_wide: Bool = False,
 ) raises -> CursorMotion:
     """Move by logical lines while preserving the original display column."""
     var position = document.position_at(offset)
-    var desired = desired_column
-    if desired < 0:
-        desired = display_column(document, offset, tab_width, ambiguous_is_wide)
+    var desired = Int(desired_column.value()) if desired_column else display_column(
+        document, offset, tab_width, ambiguous_is_wide
+    )
     var target_line = max(0, min(position.line + line_delta, document.line_count() - 1))
     return CursorMotion(
         offset_for_display_column(
@@ -235,7 +235,7 @@ def move_vertical(
             tab_width,
             ambiguous_is_wide,
         ),
-        desired,
+        UInt(desired),
     )
 
 
@@ -251,7 +251,7 @@ def move_selection_left(
     selection.head = target
     if not extend:
         selection.anchor = target
-    selection.desired_column = -1
+    selection.desired_column = None
 
 
 def move_selection_right(
@@ -264,7 +264,7 @@ def move_selection_right(
     selection.head = target
     if not extend:
         selection.anchor = target
-    selection.desired_column = -1
+    selection.desired_column = None
 
 
 def move_selection_vertical(
