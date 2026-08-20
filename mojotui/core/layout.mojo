@@ -5,27 +5,74 @@ from std.collections import List
 from .geometry import Rect, _saturating_add_nonnegative
 
 
+def _saturating_product(left: Int, right: Int) -> Int:
+    if left <= 0 or right <= 0:
+        return 0
+    if left > Int.MAX // right:
+        return Int.MAX
+    return left * right
+
+
+struct Margin(Copyable):
+    """Symmetric horizontal and vertical layout inset."""
+
+    var horizontal: Int
+    var vertical: Int
+
+    def __init__(out self, horizontal: Int = 0, vertical: Int = 0):
+        self.horizontal = max(horizontal, 0)
+        self.vertical = max(vertical, 0)
+
+    @staticmethod
+    def uniform(value: Int) -> Self:
+        return Self(value, value)
+
+
+struct ConstraintKind(Copyable, Equatable, ImplicitlyCopyable):
+    """Nominal sizing-rule discriminator used by `Constraint`."""
+
+    comptime LENGTH = ConstraintKind(0, _validated=True)
+    comptime MIN = ConstraintKind(1, _validated=True)
+    comptime MAX = ConstraintKind(2, _validated=True)
+    comptime PERCENTAGE = ConstraintKind(3, _validated=True)
+    comptime RATIO = ConstraintKind(4, _validated=True)
+    comptime FILL = ConstraintKind(5, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 5:
+            raise Error("invalid layout constraint kind")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
+
+
 struct Constraint(Copyable):
     """The sizing rule for one layout segment."""
 
-    comptime LENGTH = 0
-    comptime MIN = 1
-    comptime MAX = 2
-    comptime PERCENTAGE = 3
-    comptime RATIO = 4
-    comptime FILL = 5
+    comptime LENGTH = ConstraintKind.LENGTH
+    comptime MIN = ConstraintKind.MIN
+    comptime MAX = ConstraintKind.MAX
+    comptime PERCENTAGE = ConstraintKind.PERCENTAGE
+    comptime RATIO = ConstraintKind.RATIO
+    comptime FILL = ConstraintKind.FILL
 
-    var kind: Int
+    var kind: ConstraintKind
     var value: Int
     var denominator: Int
 
     def __init__(
         out self,
-        kind: Int,
+        kind: ConstraintKind,
         value: Int = 0,
         denominator: Int = 1,
     ):
-        self.kind = kind if kind >= Self.LENGTH and kind <= Self.FILL else Self.FILL
+        self.kind = kind
         self.value = max(value, 0)
         self.denominator = max(1, min(denominator, 1_000_000))
 
@@ -43,79 +90,155 @@ struct Constraint(Copyable):
 
     @staticmethod
     def percentage(value: Int) -> Self:
-        return Self(Self.PERCENTAGE, min(max(value, 0), 100), 100)
+        return Self(Self.PERCENTAGE, min(max(value, 0), 1_000_000), 100)
 
     @staticmethod
     def ratio(numerator: Int, denominator: Int) -> Self:
         var safe_denominator = max(1, min(denominator, 1_000_000))
         return Self(
             Self.RATIO,
-            min(max(numerator, 0), safe_denominator),
+            min(max(numerator, 0), 1_000_000),
             safe_denominator,
         )
 
     @staticmethod
     def fill(weight: Int = 1) -> Self:
-        return Self(Self.FILL, max(1, min(weight, 1_000_000)))
+        return Self(Self.FILL, min(max(weight, 0), 1_000_000))
 
 
-struct Flex:
+struct Flex(Copyable, Equatable, ImplicitlyCopyable):
     """Placement of space left after all constraints are satisfied."""
 
-    comptime START = 0
-    comptime CENTER = 1
-    comptime END = 2
-    comptime SPACE_BETWEEN = 3
+    comptime START = Flex(0, _validated=True)
+    comptime CENTER = Flex(1, _validated=True)
+    comptime END = Flex(2, _validated=True)
+    comptime SPACE_BETWEEN = Flex(3, _validated=True)
+    comptime SPACE_EVENLY = Flex(4, _validated=True)
+    comptime SPACE_AROUND = Flex(5, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 5:
+            raise Error("invalid layout flex mode")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
+
+
+struct Direction(Copyable, Equatable, ImplicitlyCopyable):
+    """Nominal axis along which a layout divides its area."""
+
+    comptime HORIZONTAL = Direction(0, _validated=True)
+    comptime VERTICAL = Direction(1, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 1:
+            raise Error("invalid layout direction")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
 
 
 struct Layout(Copyable):
     """Split a rectangle along one axis without a general constraint solver.
 
-    Exact, percentage, and ratio constraints are allocated in declaration
-    order. `minimum`, `maximum`, and weighted `fill` segments share remaining
-    space. When the requested bases do not fit, later segments clip first.
+    Ratatui-compatible non-legacy priorities resolve over-constrained segments:
+    minimum, maximum, length, percentage, ratio, then fill. Weighted fills
+    consume remaining segment space. Flexible spacers receive only the excess
+    left after segment growth.
     """
 
-    comptime HORIZONTAL = 0
-    comptime VERTICAL = 1
+    comptime HORIZONTAL = Direction.HORIZONTAL
+    comptime VERTICAL = Direction.VERTICAL
 
-    var direction: Int
+    var direction: Direction
     var constraints: List[Constraint]
-    var spacing: Int
-    var flex: Int
+    var _spacing: Int
+    var _flex: Flex
+    var _margin: Margin
 
     def __init__(
         out self,
-        direction: Int,
+        direction: Direction,
         var constraints: List[Constraint],
         spacing: Int = 0,
-        flex: Int = Flex.START,
+        flex: Flex = Flex.START,
+        margin: Margin = Margin(),
     ):
-        self.direction = (
-            direction if direction == Self.HORIZONTAL
-            or direction == Self.VERTICAL else Self.HORIZONTAL
-        )
+        self.direction = direction
         self.constraints = constraints^
-        self.spacing = max(spacing, 0)
-        self.flex = (
-            flex if flex >= Flex.START and flex <= Flex.SPACE_BETWEEN else Flex.START
-        )
+        self._spacing = max(spacing, 0)
+        self._flex = flex
+        self._margin = margin.copy()
 
     @staticmethod
     def horizontal(
         var constraints: List[Constraint],
         spacing: Int = 0,
-        flex: Int = Flex.START,
+        flex: Flex = Flex.START,
+        margin: Margin = Margin(),
     ) -> Self:
-        return Self(Self.HORIZONTAL, constraints^, spacing, flex)
+        return Self(Self.HORIZONTAL, constraints^, spacing, flex, margin)
 
     @staticmethod
     def vertical(
         var constraints: List[Constraint],
         spacing: Int = 0,
-        flex: Int = Flex.START,
+        flex: Flex = Flex.START,
+        margin: Margin = Margin(),
     ) -> Self:
-        return Self(Self.VERTICAL, constraints^, spacing, flex)
+        return Self(Self.VERTICAL, constraints^, spacing, flex, margin)
+
+    def with_margin(self, margin: Margin) -> Self:
+        var result = self.copy()
+        result._margin = margin.copy()
+        return result^
+
+    def with_uniform_margin(self, margin: Int) -> Self:
+        return self.with_margin(Margin.uniform(margin))
+
+    def margin(self, margin: Int) -> Self:
+        """Set a uniform margin using Ratatui-compatible naming."""
+        return self.with_uniform_margin(margin)
+
+    def horizontal_margin(self, margin: Int) -> Self:
+        var result = self.copy()
+        result._margin.horizontal = max(margin, 0)
+        return result^
+
+    def vertical_margin(self, margin: Int) -> Self:
+        var result = self.copy()
+        result._margin.vertical = max(margin, 0)
+        return result^
+
+    def with_spacing(self, spacing: Int) -> Self:
+        var result = self.copy()
+        result._spacing = max(spacing, 0)
+        return result^
+
+    def spacing(self, spacing: Int) -> Self:
+        """Set nonnegative inter-segment spacing."""
+        return self.with_spacing(spacing)
+
+    def with_flex(self, flex: Flex) -> Self:
+        var result = self.copy()
+        result._flex = flex
+        return result^
+
+    def flex(self, flex: Flex) -> Self:
+        """Set excess-space placement using Ratatui-compatible naming."""
+        return self.with_flex(flex)
 
     @staticmethod
     def _scaled(total: Int, numerator: Int, denominator: Int) -> Int:
@@ -123,80 +246,171 @@ struct Layout(Copyable):
             return 0
         var quotient = total // denominator
         var remainder = total % denominator
-        return quotient * numerator + (remainder * numerator) // denominator
+        var whole = _saturating_product(quotient, numerator)
+        var partial = _saturating_product(remainder, numerator) // denominator
+        if whole > Int.MAX - partial:
+            return Int.MAX
+        return whole + partial
 
-    def _base_size(self, constraint: Constraint, available: Int) -> Int:
+    @staticmethod
+    def _rounded_scaled(total: Int, numerator: Int, denominator: Int) -> Int:
+        if total <= 0 or numerator <= 0:
+            return 0
+        if numerator >= denominator:
+            return total
+        var floor = Self._scaled(total, numerator, denominator)
+        var remainder = total % denominator
+        var fractional = remainder * numerator % denominator
+        return floor + (1 if fractional * 2 >= denominator else 0)
+
+    def _base_size(self, constraint: Constraint, axis: Int) -> Int:
         if constraint.kind == Constraint.LENGTH:
-            return min(constraint.value, available)
+            return min(constraint.value, axis)
         if constraint.kind == Constraint.MIN:
-            return min(constraint.value, available)
-        if constraint.kind == Constraint.PERCENTAGE:
-            return Self._scaled(available, constraint.value, 100)
-        if constraint.kind == Constraint.RATIO:
-            return Self._scaled(available, constraint.value, constraint.denominator)
-        return 0
-
-    def _growth_weight(self, constraint: Constraint) -> Int:
-        if constraint.kind == Constraint.FILL:
-            return constraint.value
-        if constraint.kind == Constraint.MIN or constraint.kind == Constraint.MAX:
-            return 1
-        return 0
-
-    def _can_grow(self, constraint: Constraint, current: Int) -> Bool:
+            return min(constraint.value, axis)
         if constraint.kind == Constraint.MAX:
-            return current < constraint.value
-        return constraint.kind == Constraint.MIN or constraint.kind == Constraint.FILL
+            return min(constraint.value, axis)
+        if constraint.kind == Constraint.PERCENTAGE:
+            return min(axis, Self._scaled(axis, constraint.value, 100))
+        if constraint.kind == Constraint.RATIO:
+            return min(
+                axis,
+                Self._scaled(axis, constraint.value, constraint.denominator),
+            )
+        return 0
+
+    def _priority(self, constraint: Constraint) -> Int:
+        if constraint.kind == Constraint.MIN:
+            return 0
+        if constraint.kind == Constraint.MAX:
+            return 1
+        if constraint.kind == Constraint.LENGTH:
+            return 2
+        if constraint.kind == Constraint.PERCENTAGE:
+            return 3
+        if constraint.kind == Constraint.RATIO:
+            return 4
+        return 5
+
+    def _allocate_bases(
+        self,
+        mut sizes: List[Int],
+        capacity: Int,
+        axis: Int,
+    ) -> Int:
+        var remaining = capacity
+        for priority in range(5):
+            if remaining == 0:
+                break
+            var desired_total = 0
+            for index in range(len(self.constraints)):
+                var constraint = self.constraints[index].copy()
+                if self._priority(constraint) == priority:
+                    var desired = self._base_size(constraint, axis)
+                    if desired_total > Int.MAX - desired:
+                        desired_total = Int.MAX
+                    else:
+                        desired_total += desired
+            if desired_total == 0:
+                continue
+            if desired_total <= remaining:
+                for index in range(len(self.constraints)):
+                    var constraint = self.constraints[index].copy()
+                    if self._priority(constraint) == priority:
+                        sizes[index] = self._base_size(constraint, axis)
+                remaining -= desired_total
+                continue
+
+            var cumulative = 0
+            var allocated = 0
+            for index in range(len(self.constraints)):
+                var constraint = self.constraints[index].copy()
+                if self._priority(constraint) != priority:
+                    continue
+                cumulative += self._base_size(constraint, axis)
+                var boundary = Self._rounded_scaled(
+                    remaining, cumulative, desired_total
+                )
+                sizes[index] = boundary - allocated
+                allocated = boundary
+            remaining = 0
+        return remaining
 
     def _grow(
         self,
         mut sizes: List[Int],
         mut remaining: Int,
     ) -> Int:
-        while remaining > 0:
-            var total_weight = 0
-            for index in range(len(self.constraints)):
-                var constraint = self.constraints[index].copy()
-                if self._can_grow(constraint, sizes[index]):
-                    var weight = self._growth_weight(constraint)
-                    if weight > Int.MAX - total_weight:
-                        total_weight = Int.MAX
-                    else:
-                        total_weight += weight
-            if total_weight == 0:
-                break
+        if remaining == 0:
+            return 0
+        var fill_count = 0
+        var fill_weight = 0
+        for index in range(len(self.constraints)):
+            var constraint = self.constraints[index].copy()
+            if constraint.kind == Constraint.FILL:
+                fill_count += 1
+                fill_weight += constraint.value
 
-            var round_budget = remaining
-            var grants = List[Int](length=len(sizes), fill=0)
-            var granted = 0
+        if fill_count > 0:
+            var total_weight = fill_weight if fill_weight > 0 else fill_count
+            var cumulative = 0
+            var allocated = 0
             for index in range(len(self.constraints)):
                 var constraint = self.constraints[index].copy()
-                if not self._can_grow(constraint, sizes[index]):
+                if constraint.kind != Constraint.FILL:
                     continue
-                var share = Self._scaled(
-                    round_budget,
-                    self._growth_weight(constraint),
-                    total_weight,
-                )
-                if constraint.kind == Constraint.MAX:
-                    share = min(share, constraint.value - sizes[index])
-                share = min(share, round_budget - granted)
-                grants[index] = share
-                granted += share
+                var weight = constraint.value if fill_weight > 0 else 1
+                cumulative += weight
+                var boundary = Self._rounded_scaled(remaining, cumulative, total_weight)
+                sizes[index] += boundary - allocated
+                allocated = boundary
+            return 0
 
-            if granted == 0:
-                for index in range(len(self.constraints)):
-                    if remaining == 0:
-                        break
-                    var constraint = self.constraints[index].copy()
-                    if self._can_grow(constraint, sizes[index]):
-                        sizes[index] += 1
-                        remaining -= 1
-            else:
-                for index in range(len(sizes)):
-                    sizes[index] += grants[index]
-                remaining -= granted
-        return remaining
+        var minimum_count = 0
+        for index in range(len(self.constraints)):
+            if self.constraints[index].kind == Constraint.MIN:
+                minimum_count += 1
+        if minimum_count == 0:
+            return remaining
+
+        var seen = 0
+        var allocated = 0
+        for index in range(len(self.constraints)):
+            if self.constraints[index].kind != Constraint.MIN:
+                continue
+            seen += 1
+            var boundary = Self._rounded_scaled(remaining, seen, minimum_count)
+            sizes[index] += boundary - allocated
+            allocated = boundary
+        return 0
+
+    @staticmethod
+    def _distribute_equal(
+        mut spacers: List[Int],
+        first: Int,
+        count: Int,
+        total: Int,
+    ):
+        if count <= 0:
+            return
+        var allocated = 0
+        for offset in range(count):
+            var boundary = Self._rounded_scaled(total, offset + 1, count)
+            spacers[first + offset] = boundary - allocated
+            allocated = boundary
+
+    @staticmethod
+    def _distribute_around(mut spacers: List[Int], total: Int):
+        var count = len(spacers) - 1
+        if count <= 0:
+            return
+        var denominator = count * 2
+        var allocated = 0
+        for index in range(len(spacers)):
+            var cumulative_units = min(index * 2 + 1, denominator)
+            var boundary = Self._rounded_scaled(total, cumulative_units, denominator)
+            spacers[index] = boundary - allocated
+            allocated = boundary
 
     def split(self, area: Rect) -> List[Rect]:
         """Allocate non-overlapping child rectangles contained by `area`."""
@@ -205,58 +419,65 @@ struct Layout(Copyable):
         if count == 0:
             return result^
 
-        var axis = area.width if self.direction == Self.HORIZONTAL else area.height
+        var inner = area.inset(self._margin.horizontal, self._margin.vertical)
+        var axis = inner.width if self.direction == Self.HORIZONTAL else inner.height
         var gap_count = count - 1
-        var gaps = List[Int](length=gap_count, fill=0)
-        var available = axis
-        for index in range(gap_count):
-            var gap = min(self.spacing, available)
-            gaps[index] = gap
-            available -= gap
+        var spacer_units = gap_count
+        if self._flex == Flex.SPACE_EVENLY:
+            spacer_units = count + 1
+        elif self._flex == Flex.SPACE_AROUND:
+            spacer_units = count * 2
+        var minimum_spacers = min(
+            axis, _saturating_product(self._spacing, spacer_units)
+        )
+        var available = axis - minimum_spacers
 
         var sizes = List[Int](length=count, fill=0)
-        var remaining = available
-        for index in range(count):
-            var size = min(
-                self._base_size(self.constraints[index], available), remaining
-            )
-            sizes[index] = size
-            remaining -= size
-
+        var remaining = self._allocate_bases(sizes, available, axis)
         remaining = self._grow(sizes, remaining)
 
-        var leading = 0
-        if self.flex == Flex.CENTER:
-            leading = remaining // 2
-        elif self.flex == Flex.END:
-            leading = remaining
-        elif self.flex == Flex.SPACE_BETWEEN and gap_count > 0:
-            var extra = remaining // gap_count
-            var remainder = remaining % gap_count
-            for index in range(gap_count):
-                gaps[index] += extra + (1 if index < remainder else 0)
+        if self._flex == Flex.SPACE_BETWEEN and count == 1:
+            sizes[0] = axis
+            remaining = 0
+            minimum_spacers = 0
 
-        var cursor = leading
+        var spacers = List[Int](length=count + 1, fill=0)
+        if self._flex == Flex.SPACE_BETWEEN:
+            Self._distribute_equal(spacers, 1, gap_count, minimum_spacers + remaining)
+        elif self._flex == Flex.SPACE_EVENLY:
+            Self._distribute_equal(spacers, 0, count + 1, minimum_spacers + remaining)
+        elif self._flex == Flex.SPACE_AROUND:
+            Self._distribute_around(spacers, minimum_spacers + remaining)
+        else:
+            Self._distribute_equal(spacers, 1, gap_count, minimum_spacers)
+            if self._flex == Flex.CENTER:
+                spacers[0] = Self._rounded_scaled(remaining, 1, 2)
+                spacers[count] = remaining - spacers[0]
+            elif self._flex == Flex.END:
+                spacers[0] = remaining
+            else:
+                spacers[count] = remaining
+
+        var cursor = spacers[0]
         for index in range(count):
             if self.direction == Self.HORIZONTAL:
                 result.append(
                     Rect(
-                        _saturating_add_nonnegative(area.x, cursor),
-                        area.y,
+                        _saturating_add_nonnegative(inner.x, cursor),
+                        inner.y,
                         sizes[index],
-                        area.height,
+                        inner.height,
                     )
                 )
             else:
                 result.append(
                     Rect(
-                        area.x,
-                        _saturating_add_nonnegative(area.y, cursor),
-                        area.width,
+                        inner.x,
+                        _saturating_add_nonnegative(inner.y, cursor),
+                        inner.width,
                         sizes[index],
                     )
                 )
             cursor += sizes[index]
-            if index < gap_count:
-                cursor += gaps[index]
+            cursor += spacers[index + 1]
         return result^

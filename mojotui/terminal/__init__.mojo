@@ -7,6 +7,11 @@ from .ansi import (
     inline_reserve_sequence,
 )
 from .backend import AnsiBackend, Backend, HeadlessBackend, InlineBackend, Terminal
+from .capabilities import (
+    detect_terminal_capabilities,
+    terminal_capabilities_from_environment,
+)
+from .frame import CellChange, CompletedFrame, Frame, FramePatch, diff_frame
 from .session import (
     SessionOptions,
     TerminalSession,

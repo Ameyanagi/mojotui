@@ -4,16 +4,20 @@
 
 Mojotui is an experimental terminal UI library for Mojo. Its rendering model
 borrows the useful parts of Ratatui: immediate-mode widgets draw into a cell
-buffer, a backend compares frames, and application state stays outside widgets.
+buffer, a terminal-owned frame transaction computes changes, and application
+state stays outside widgets.
 The API follows Mojo's ownership and static generic system instead of copying
 Ratatui's Rust types.
 
 The repository currently includes:
 
-- clipped Unicode-aware buffers, layout, rich text, and ANSI diffs;
+- clipped Unicode-aware buffers, composable style patches, portable adaptive
+  colors, directly renderable rich text, layout, and ANSI diffs;
 - full-screen, inline, headless, and POSIX terminal support;
-- lists, tables, tabs, gauges, scrollbars, forms, and an editor widget;
+- wrapped/scrolled paragraphs, configurable blocks, multiline lists and tables,
+  fill, tabs, gauges, scrollbars, forms, and an editor widget;
 - typed application state, effects, subscriptions, focus, and keymaps;
+- a lifecycle-safe typed host for fullscreen or inline applications;
 - a piece-table editor with multi-selection undo, file services, controllers,
   highlighting hooks, and bounded OSC 52 copy support.
 
@@ -41,8 +45,10 @@ terminal restoration through a PTY, verifies formatting, compiles with
 
 ## A small renderer
 
-Widgets are values. The caller owns the frame and passes a bounded `Rect` to
-each render call.
+Widgets are values. Pure renderers can draw directly into a caller-owned
+`Buffer`; interactive applications ask `Terminal` for a `Frame`, render into
+its stable viewport, and finish the transaction. The terminal owns frame
+history, resize detection, diffing, and cursor intent.
 
 ```mojo
 from mojotui import Buffer, Line, Paragraph, Rect, Text
@@ -68,6 +74,34 @@ The same program is checked in as `examples/hello.mojo`:
 pixi run mojo run -I . examples/hello.mojo
 ```
 
+## Portable terminal colors
+
+`AdaptiveColor` resolves light, dark, and unknown-appearance alternatives for
+monochrome, ANSI-16, ANSI-256, or truecolor output. Resolution happens before
+cells are written, so buffers and headless snapshots retain ordinary resolved
+`Color` values:
+
+```mojo
+from mojotui import (
+    AdaptiveColor,
+    ProfiledColor,
+    Style,
+    detect_terminal_capabilities,
+)
+
+
+def main() raises:
+    var capabilities = detect_terminal_capabilities()
+    var accent = AdaptiveColor(
+        ProfiledColor.from_rgb(80, 40, 160),   # light background
+        ProfiledColor.from_rgb(80, 200, 255),  # dark background
+    )
+    var style = Style(foreground=accent.resolve(capabilities))
+```
+
+Pass the same capability value to `AnsiBackend` or `InlineBackend`. Headless
+tests should pass an explicit value when exercising a particular theme.
+
 Use `TerminalSession`, `AnsiBackend`, `PosixReactor`, and `InputParser` for an
 interactive full-screen program. [The dashboard source](examples/dashboard.mojo)
 contains a complete event loop.
@@ -75,9 +109,9 @@ contains a complete event loop.
 ## Function syntax and strict types
 
 Current Mojo uses `def` for all function declarations. The pinned compiler
-rejects the removed `fn` keyword. `def` is non-raising unless the signature says
-`raises`, so it has the strict behavior that older Mojo releases attached to
-`fn`.
+still treats `fn` as deprecated; Mojotui's source policy and `--Werror` build
+reject it. `def` is non-raising unless the signature says `raises`, so it has
+the strict behavior that older Mojo releases attached to `fn`.
 
 Mojotui compiles public calls and generic constraints at build time. The library
 does not expose `AnyType`, `PythonObject`, runtime widget objects, or runtime
@@ -93,6 +127,11 @@ backend objects. [TYPE_SAFETY.md](TYPE_SAFETY.md) records the enforced rules.
 - [docs/custom-widgets.md](docs/custom-widgets.md) shows both widget contracts.
 - [docs/backends.md](docs/backends.md) covers terminal ownership and backends.
 - [docs/api.md](docs/api.md) maps common tasks to public types.
+- [docs/migration.md](docs/migration.md) records pre-1.0 API migrations.
+- [docs/layout-compatibility.md](docs/layout-compatibility.md) records the
+  Ratatui 0.30.2 fixture contract and deliberate differences.
+- [docs/stability.md](docs/stability.md) defines supported and experimental
+  API tiers.
 - [docs/terminals.md](docs/terminals.md) lists platform and terminal assumptions.
 - [docs/limitations.md](docs/limitations.md) records known gaps.
 

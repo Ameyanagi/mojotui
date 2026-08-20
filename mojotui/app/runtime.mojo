@@ -1,12 +1,13 @@
 """Sequential application processing with an injected monotonic clock."""
 
-from std.collections import Optional
+from std.collections import List, Optional
 from std.time import monotonic
 
-from ..core.buffer import Buffer
 from ..terminal.backend import Backend, Terminal
 from .contracts import Application, dispatch, render_application, subscriptions
 from .effects import (
+    Command,
+    ControlFlow,
     OperationTracker,
     SubscriptionDelta,
     SubscriptionTracker,
@@ -68,7 +69,9 @@ struct ApplicationRuntime[A: Application, C: Clock](Movable):
     var queue: MessageQueue[Self.A.Message]
     var subscription_tracker: SubscriptionTracker
     var operation_tracker: OperationTracker
+    var startup_commands: List[Command[Self.A.Effect]]
     var needs_redraw: Bool
+    var exiting: Bool
 
     def __init__(
         out self,
@@ -76,19 +79,27 @@ struct ApplicationRuntime[A: Application, C: Clock](Movable):
         var clock: Self.C,
         queue_capacity: Int = 256,
     ) raises:
-        self.model = application.init()
+        var initialized = application.init()
+        self.model = initialized.take_model()
         self.application = application^
         self.clock = clock^
         self.queue = MessageQueue[Self.A.Message](queue_capacity)
         self.subscription_tracker = SubscriptionTracker()
         self.operation_tracker = OperationTracker()
+        self.startup_commands = initialized.take_commands()
         self.needs_redraw = True
+        self.exiting = False
 
     def now_ns(self) -> Int:
         return self.clock.now_ns()
 
     def request_redraw(mut self):
         self.needs_redraw = True
+
+    def take_startup_commands(mut self) -> List[Command[Self.A.Effect]]:
+        var commands = self.startup_commands^
+        self.startup_commands = List[Command[Self.A.Effect]]()
+        return commands^
 
     def process_one(mut self) raises -> Optional[UpdateResult[Self.A.Effect]]:
         """Process one queued message sequentially, if available."""
@@ -102,6 +113,8 @@ struct ApplicationRuntime[A: Application, C: Clock](Movable):
         )
         if result.redraw:
             self.needs_redraw = True
+        if result.control == ControlFlow.EXIT:
+            self.exiting = True
         return result^
 
     def reconcile_subscriptions(mut self) raises -> SubscriptionDelta[Self.A.Effect]:
@@ -114,9 +127,9 @@ struct ApplicationRuntime[A: Application, C: Clock](Movable):
         """Render and present exactly once when redraw is pending."""
         if not self.needs_redraw:
             return False
-        var area = terminal.viewport()
-        var frame = Buffer(area)
-        render_application(self.application, self.model, area, frame)
-        terminal.present(frame)
+        var frame = terminal.begin_frame()
+        var area = frame.area()
+        render_application(self.application, self.model, area, frame.buffer)
+        _ = terminal.finish_frame(frame^)
         self.needs_redraw = False
         return True

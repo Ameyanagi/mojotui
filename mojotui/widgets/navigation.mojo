@@ -1,11 +1,11 @@
 """Navigation and viewport-position widgets."""
 
-from std.collections import List as MojoList
+from std.collections import List as MojoList, Optional
 
 from ..core.buffer import Buffer
 from ..core.cell import Cell
 from ..core.geometry import Point, Rect
-from ..core.style import Style
+from ..core.style import Style, StylePatch
 from ..core.widget import StatefulWidget, Widget
 from ..text.rich import Line, Span, render_line
 from ..text.width import text_width
@@ -18,7 +18,7 @@ struct Tabs(Copyable, Widget):
     var selected: Int
     var divider: String
     var style: Style
-    var selected_style: Style
+    var selected_style: StylePatch
 
     def __init__(
         out self,
@@ -26,7 +26,7 @@ struct Tabs(Copyable, Widget):
         selected: Int = 0,
         var divider: String = "│",
         style: Style = Style.plain(),
-        selected_style: Style = Style(modifiers=Style.REVERSED),
+        selected_style: StylePatch = StylePatch(add_modifiers=Style.REVERSED),
     ):
         self.titles = titles^
         self.selected = max(selected, 0)
@@ -43,27 +43,40 @@ struct Tabs(Copyable, Widget):
         var spans = MojoList[Span]()
         for title_index in range(len(self.titles)):
             if title_index > 0:
-                spans.append(Span(self.divider, self.style))
+                spans.append(Span(self.divider))
             var tab_style = (
                 self.selected_style.copy() if title_index
-                == self.selected else self.style.copy()
+                == self.selected else StylePatch.plain()
             )
             spans.append(Span(" ", tab_style))
             var title = self.titles[title_index].copy()
             for span_index in range(len(title.spans)):
                 var span = title.spans[span_index].copy()
                 if title_index == self.selected:
-                    span.style = self.selected_style.copy()
+                    span.style = span.style.then(self.selected_style)
                 spans.append(span^)
             spans.append(Span(" ", tab_style))
-        render_line(Line(spans^), row_area, buffer)
+        render_line(Line(spans^), row_area, buffer, base_style=self.style)
 
 
-struct ScrollbarOrientation:
+struct ScrollbarOrientation(Copyable, Equatable, ImplicitlyCopyable):
     """Axis occupied by a scrollbar."""
 
-    comptime VERTICAL = 0
-    comptime HORIZONTAL = 1
+    comptime VERTICAL = ScrollbarOrientation(0, _validated=True)
+    comptime HORIZONTAL = ScrollbarOrientation(1, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 1:
+            raise Error("invalid scrollbar orientation")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
 
 
 struct ScrollbarState(Copyable):
@@ -104,10 +117,41 @@ struct ScrollbarState(Copyable):
         self.position = max(self.position - max(amount, 0), 0)
 
 
-def _one_column_symbol(var symbol: String, var fallback: String) -> String:
-    if StringSlice(symbol).count_graphemes() == 1 and text_width(symbol) == 1:
-        return symbol^
-    return fallback^
+def _is_one_column_symbol(symbol: StringSlice) -> Bool:
+    return symbol.count_graphemes() == 1 and text_width(symbol) == 1
+
+
+struct ScrollbarSymbols(Copyable):
+    """A validated one-column track and thumb glyph pair."""
+
+    var track: String
+    var thumb: String
+
+    def __init__(
+        out self,
+        var track: String,
+        var thumb: String,
+        *,
+        _validated: Bool,
+    ):
+        self.track = track^
+        self.thumb = thumb^
+
+    def __init__(out self, var track: String, var thumb: String) raises:
+        if not _is_one_column_symbol(track):
+            raise Error("scrollbar track must be exactly one terminal column")
+        if not _is_one_column_symbol(thumb):
+            raise Error("scrollbar thumb must be exactly one terminal column")
+        self.track = track^
+        self.thumb = thumb^
+
+    @staticmethod
+    def vertical() -> Self:
+        return Self("│", "█", _validated=True)
+
+    @staticmethod
+    def horizontal() -> Self:
+        return Self("─", "█", _validated=True)
 
 
 struct Scrollbar(Copyable, StatefulWidget):
@@ -115,30 +159,23 @@ struct Scrollbar(Copyable, StatefulWidget):
 
     comptime State = ScrollbarState
 
-    var orientation: Int
-    var track_symbol: String
-    var thumb_symbol: String
+    var orientation: ScrollbarOrientation
+    var symbols: ScrollbarSymbols
     var track_style: Style
     var thumb_style: Style
 
     def __init__(
         out self,
-        orientation: Int = ScrollbarOrientation.VERTICAL,
-        var track_symbol: String = "│",
-        var thumb_symbol: String = "█",
+        orientation: ScrollbarOrientation = ScrollbarOrientation.VERTICAL,
+        symbols: Optional[ScrollbarSymbols] = None,
         track_style: Style = Style.plain(),
         thumb_style: Style = Style.plain(),
     ):
-        self.orientation = (
-            orientation if orientation == ScrollbarOrientation.VERTICAL
-            or orientation
-            == ScrollbarOrientation.HORIZONTAL else ScrollbarOrientation.VERTICAL
+        self.orientation = orientation
+        self.symbols = (
+            symbols.value().copy() if symbols else ScrollbarSymbols.vertical() if orientation
+            == ScrollbarOrientation.VERTICAL else ScrollbarSymbols.horizontal()
         )
-        var default_track = (
-            "│" if self.orientation == ScrollbarOrientation.VERTICAL else "─"
-        )
-        self.track_symbol = _one_column_symbol(track_symbol^, default_track^)
-        self.thumb_symbol = _one_column_symbol(thumb_symbol^, "█")
         self.track_style = track_style.copy()
         self.thumb_style = thumb_style.copy()
 
@@ -148,11 +185,10 @@ struct Scrollbar(Copyable, StatefulWidget):
         thumb_style: Style = Style.plain(),
     ) -> Self:
         return Self(
-            ScrollbarOrientation.HORIZONTAL,
-            "─",
-            "█",
-            track_style,
-            thumb_style,
+            orientation=ScrollbarOrientation.HORIZONTAL,
+            symbols=ScrollbarSymbols.horizontal(),
+            track_style=track_style,
+            thumb_style=thumb_style,
         )
 
     @staticmethod
@@ -201,7 +237,7 @@ struct Scrollbar(Copyable, StatefulWidget):
             _ = buffer.set_cell(
                 point,
                 Cell(
-                    self.thumb_symbol if in_thumb else self.track_symbol,
+                    self.symbols.thumb if in_thumb else self.symbols.track,
                     style=self.thumb_style if in_thumb else self.track_style,
                 ),
             )

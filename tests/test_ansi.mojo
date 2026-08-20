@@ -1,4 +1,4 @@
-from std.testing import TestSuite, assert_equal, assert_raises
+from std.testing import TestSuite, assert_equal, assert_raises, assert_true
 
 from mojotui import (
     Buffer,
@@ -6,6 +6,7 @@ from mojotui import (
     Color,
     Rect,
     Style,
+    diff_frame,
     encode_ansi_diff,
     encode_ansi_inline_diff,
     inline_clear_sequence,
@@ -60,6 +61,36 @@ def test_style_transition_uses_indexed_and_rgb_colors() raises:
     )
 
 
+def test_underline_color_uses_sgr_58() raises:
+    var before = Buffer(Rect(0, 0, 1, 1))
+    var after = before.copy()
+    var style = Style(
+        modifiers=Style.UNDERLINED,
+        underline_color=Color.indexed(5),
+    )
+    _ = after.set_cell({0, 0}, Cell("u", style=style))
+    assert_true("\x1b[58;5;5m" in encode_ansi_diff(before, after))
+
+
+def test_ansi16_colors_use_portable_basic_sgr_codes() raises:
+    var before = Buffer(Rect(0, 0, 1, 1))
+    var after = before.copy()
+    _ = after.set_cell(
+        {0, 0},
+        Cell(
+            "x",
+            style=Style(
+                foreground=Color.indexed(1),
+                background=Color.indexed(12),
+            ),
+        ),
+    )
+    var encoded = encode_ansi_diff(before, after)
+    assert_true("\x1b[31m" in encoded)
+    assert_true("\x1b[104m" in encoded)
+    assert_true(";5;" not in encoded)
+
+
 def test_wide_cell_skips_its_continuation() raises:
     var before = Buffer(Rect(0, 0, 3, 1))
     var after = before.copy()
@@ -74,6 +105,18 @@ def test_replacing_wide_cell_repaints_its_second_column() raises:
     var after = before.copy()
     _ = after.set_cell({0, 0}, Cell("x"))
     assert_equal(encode_ansi_diff(before, after), "\x1b[0m\x1b[1;1Hx ")
+
+
+def test_full_redraw_patch_is_row_major_and_skips_blank_continuations() raises:
+    var before = Buffer(Rect(4, 7, 3, 2))
+    var after = before.copy()
+    _ = after.set_cell({6, 7}, Cell("a"))
+    _ = after.set_grapheme({4, 8}, "界")
+    var patch = diff_frame(before, after, full_redraw=True)
+    assert_equal(len(patch.changes), 2)
+    assert_true(patch.changes[0].point.equals({6, 7}))
+    assert_true(patch.changes[1].point.equals({4, 8}))
+    assert_equal(patch.changes[1].cell.symbol, "界")
 
 
 def test_mismatched_areas_are_rejected() raises:

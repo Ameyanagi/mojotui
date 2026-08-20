@@ -1,7 +1,7 @@
 """A safe logical terminal cell."""
 
 from ..text.width import grapheme_width
-from .style import Style
+from .style import Style, StylePatch
 
 
 struct Cell(Copyable):
@@ -56,3 +56,12 @@ struct Cell(Copyable):
             and self.continuation == other.continuation
             and self.style.equals(other.style)
         )
+
+    def apply_style_patch(mut self, patch: StylePatch):
+        """Apply optional style changes without altering grapheme state."""
+        self.style.apply_patch(patch)
+
+    def patched_style(self, patch: StylePatch) -> Self:
+        var result = self.copy()
+        result.apply_style_patch(patch)
+        return result^

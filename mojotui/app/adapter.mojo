@@ -1,7 +1,8 @@
 """Runtime-neutral boundary for scoped command and subscription execution."""
 
-from std.collections import List
+from std.collections import List, Optional
 
+from .contracts import Application
 from .effects import Command, Subscription, SubscriptionDelta
 
 
@@ -12,14 +13,15 @@ trait RuntimeAdapter(Deinitable, Movable):
     no executor, future, or private AsyncRT type in this contract.
     """
 
-    comptime Effect: Deinitable & Movable
-    comptime Message: Deinitable & Movable
+    comptime ApplicationType: Application
 
-    def execute(mut self, var command: Command[Self.Effect]) raises:
+    def execute(mut self, var command: Command[Self.ApplicationType.Effect]) raises:
         """Start one finite effect, preserving optional operation metadata."""
         ...
 
-    def start(mut self, var subscription: Subscription[Self.Effect]) raises:
+    def start(
+        mut self, var subscription: Subscription[Self.ApplicationType.Effect]
+    ) raises:
         """Start one stable-ID ongoing source."""
         ...
 
@@ -27,9 +29,17 @@ trait RuntimeAdapter(Deinitable, Movable):
         """Cancel and join the ongoing source identified by `id`."""
         ...
 
-    def take_messages(mut self) raises -> List[Self.Message]:
+    def take_messages(mut self) raises -> List[Self.ApplicationType.Message]:
         """Transfer the currently completed typed messages to the host."""
         ...
+
+    def next_deadline_ns(self) -> Optional[Int]:
+        """Return an optional monotonic runtime deadline for the host poll."""
+        return None
+
+    def on_deadline(mut self, now_ns: Int) raises:
+        """Advance runtime-owned timers after their monotonic deadline."""
+        pass
 
     def close(mut self) raises:
         """Cancel and join all work owned by this adapter."""
@@ -50,14 +60,18 @@ struct RuntimeScope[R: RuntimeAdapter](Movable):
         self.adapter = adapter^
         self.closed = False
 
-    def execute_commands(mut self, var commands: List[Command[Self.R.Effect]]) raises:
+    def execute_commands(
+        mut self,
+        var commands: List[Command[Self.R.ApplicationType.Effect]],
+    ) raises:
         if self.closed:
             raise Error("runtime scope is closed")
         while len(commands) > 0:
             self.adapter.execute(commands.pop(0))
 
     def apply_subscription_delta(
-        mut self, var delta: SubscriptionDelta[Self.R.Effect]
+        mut self,
+        var delta: SubscriptionDelta[Self.R.ApplicationType.Effect],
     ) raises:
         if self.closed:
             raise Error("runtime scope is closed")
@@ -69,10 +83,20 @@ struct RuntimeScope[R: RuntimeAdapter](Movable):
         while len(delta.starts) > 0:
             self.adapter.start(delta.starts.pop(0))
 
-    def take_messages(mut self) raises -> List[Self.R.Message]:
+    def take_messages(mut self) raises -> List[Self.R.ApplicationType.Message]:
         if self.closed:
-            return List[Self.R.Message]()
+            return List[Self.R.ApplicationType.Message]()
         return self.adapter.take_messages()
+
+    def next_deadline_ns(self) -> Optional[Int]:
+        if self.closed:
+            return None
+        return self.adapter.next_deadline_ns()
+
+    def on_deadline(mut self, now_ns: Int) raises:
+        if self.closed:
+            return
+        self.adapter.on_deadline(now_ns)
 
     def close(mut self) raises:
         """Cancel and join owned work exactly once."""

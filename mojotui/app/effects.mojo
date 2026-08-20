@@ -3,6 +3,26 @@
 from std.collections import List, Optional
 
 
+struct ControlFlow(Copyable, Equatable, ImplicitlyCopyable):
+    """Nominal application-loop continuation decision."""
+
+    comptime CONTINUE = ControlFlow(0, _validated=True)
+    comptime EXIT = ControlFlow(1, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 1:
+            raise Error("invalid application control flow")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
+
+
 struct OperationId(Copyable):
     """A stable logical operation key paired with one unique generation."""
 
@@ -106,14 +126,17 @@ struct UpdateResult[E: Deinitable & Movable](Movable):
     """One sequential update's redraw decision and typed effect requests."""
 
     var redraw: Bool
+    var control: ControlFlow
     var commands: List[Command[Self.E]]
 
     def __init__(
         out self,
         redraw: Bool = True,
         var commands: List[Command[Self.E]] = List[Command[Self.E]](),
+        control: ControlFlow = ControlFlow.CONTINUE,
     ):
         self.redraw = redraw
+        self.control = control
         self.commands = commands^
 
     @staticmethod
@@ -123,6 +146,16 @@ struct UpdateResult[E: Deinitable & Movable](Movable):
     @staticmethod
     def redraw_only() -> Self:
         return Self(True)
+
+    @staticmethod
+    def exit(redraw: Bool = False) -> Self:
+        return Self(redraw, control=ControlFlow.EXIT)
+
+    def take_commands(mut self) -> List[Command[Self.E]]:
+        """Transfer commands while leaving this result valid for destruction."""
+        var commands = self.commands^
+        self.commands = List[Command[Self.E]]()
+        return commands^
 
 
 struct Subscription[E: Deinitable & Movable](Movable):

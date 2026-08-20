@@ -1,14 +1,83 @@
 """PTY child used by the terminal lifecycle integration tests."""
 
+from std.collections import List, Optional
 from std.sys import argv
 
 from mojotui import (
+    Application,
+    Buffer,
+    Cell,
+    Command,
+    InitResult,
+    InputEvent,
     InputParser,
+    InlineBackend,
     KeyEvent,
+    ManualClock,
     PosixReactor,
+    Rect,
+    RuntimeAdapter,
     SessionOptions,
+    Subscription,
+    TerminalApplicationHost,
     TerminalSession,
+    UpdateResult,
 )
+
+
+struct HostProbeApplication(Application, Copyable):
+    comptime Model = Bool
+    comptime Message = KeyEvent
+    comptime Effect = Int
+
+    def __init__(out self):
+        pass
+
+    def init(mut self) raises -> InitResult[Self.Model, Self.Effect]:
+        return InitResult[Self.Model, Self.Effect].ready(False)
+
+    def update(
+        mut self, mut model: Self.Model, var message: Self.Message
+    ) raises -> UpdateResult[Self.Effect]:
+        model = True
+        return UpdateResult[Self.Effect].exit()
+
+    def view(self, model: Self.Model, area: Rect, mut buffer: Buffer) raises:
+        buffer.fill(area, Cell("H" if model else "h"))
+
+    def on_input(
+        self, model: Self.Model, var event: InputEvent
+    ) raises -> Optional[Self.Message]:
+        if event.isa[KeyEvent]():
+            return event[KeyEvent].copy()
+        return None
+
+
+struct HostProbeAdapter(RuntimeAdapter):
+    comptime ApplicationType = HostProbeApplication
+
+    def __init__(out self):
+        pass
+
+    def execute(mut self, var command: Command[Self.ApplicationType.Effect]) raises:
+        pass
+
+    def start(
+        mut self, var subscription: Subscription[Self.ApplicationType.Effect]
+    ) raises:
+        pass
+
+    def stop(mut self, id: StringSlice) raises:
+        pass
+
+    def take_messages(mut self) raises -> List[Self.ApplicationType.Message]:
+        return []
+
+    def close(mut self) raises:
+        pass
+
+    def close_silently(mut self):
+        pass
 
 
 def test_options() -> SessionOptions:
@@ -110,6 +179,42 @@ def resize_exit() raises:
     raise Error("PTY resize was not observed")
 
 
+def hosted_exit() raises:
+    var host = TerminalApplicationHost(
+        HostProbeAdapter(),
+        HostProbeApplication(),
+        ManualClock(),
+        InlineBackend(80, 1),
+        options=test_options(),
+        tick_interval_ms=100,
+    )
+    print("READY", flush=True)
+    host.run()
+
+
+def split_descriptor_resize_exit() raises:
+    var host = TerminalApplicationHost(
+        HostProbeAdapter(),
+        HostProbeApplication(),
+        ManualClock(),
+        InlineBackend(100, 1),
+        options=test_options(),
+        tick_interval_ms=100,
+    )
+    if host.reactor.last_size.width != 100 or host.reactor.last_size.height != 40:
+        raise Error("host reactor queried the wrong terminal descriptor")
+    print("READY", flush=True)
+    for _ in range(20):
+        _ = host.poll_once()
+        if host.application.terminal.backend.area.width == 120:
+            if host.application.terminal.backend.area.height != 1:
+                raise Error("inline resize changed the fixed viewport height")
+            print("RESIZED", flush=True)
+            host.close()
+            return
+    raise Error("split-descriptor inline resize was not observed")
+
+
 def main() raises:
     var args = argv()
     var mode = String(args[1]) if len(args) > 1 else String("normal")
@@ -123,5 +228,9 @@ def main() raises:
         control_c_exit()
     elif mode == "resize":
         resize_exit()
+    elif mode == "host":
+        hosted_exit()
+    elif mode == "split-descriptors":
+        split_descriptor_resize_exit()
     else:
         raise Error("unknown lifecycle probe mode")

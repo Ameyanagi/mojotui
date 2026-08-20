@@ -6,9 +6,24 @@ from std.pathlib import Path
 from ..platform import atomic_replace_file
 
 
-struct LineEnding:
-    comptime LF = 0
-    comptime CRLF = 1
+struct LineEnding(Copyable, Equatable, ImplicitlyCopyable):
+    """Nominal newline encoding preserved during file round trips."""
+
+    comptime LF = LineEnding(0, _validated=True)
+    comptime CRLF = LineEnding(1, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 1:
+            raise Error("invalid file line ending")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
 
 
 struct FileMetadata(Copyable):
@@ -38,14 +53,14 @@ struct LoadedFile(Copyable):
     """Normalized editor text plus round-trip format and filesystem metadata."""
 
     var content: String
-    var line_ending: Int
+    var line_ending: LineEnding
     var had_bom: Bool
     var metadata: FileMetadata
 
     def __init__(
         out self,
         var content: String,
-        line_ending: Int,
+        line_ending: LineEnding,
         had_bom: Bool,
         metadata: FileMetadata,
     ):
@@ -58,19 +73,17 @@ struct LoadedFile(Copyable):
 struct SaveOptions(Copyable):
     """Round-trip formatting and optional optimistic-concurrency check."""
 
-    var line_ending: Int
+    var line_ending: LineEnding
     var write_bom: Bool
     var expected: Optional[FileMetadata]
 
     def __init__(
         out self,
-        line_ending: Int = LineEnding.LF,
+        line_ending: LineEnding = LineEnding.LF,
         write_bom: Bool = False,
         expected: Optional[FileMetadata] = None,
     ):
-        self.line_ending = (
-            LineEnding.CRLF if line_ending == LineEnding.CRLF else LineEnding.LF
-        )
+        self.line_ending = line_ending
         self.write_bom = write_bom
         self.expected = expected.copy()
 

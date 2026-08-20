@@ -40,7 +40,7 @@ def test_fragmented_arrow_sequence() raises:
     assert_equal(parser.pending_byte_count(), 2)
     var second = parser.feed([UInt8(0x41)])
     assert_equal(len(second), 1)
-    assert_equal(key(second[0].copy()).code, KeyEvent.UP)
+    assert_true(key(second[0].copy()).code == KeyEvent.UP)
 
 
 def test_fragmented_utf8_character() raises:
@@ -62,7 +62,7 @@ def test_escape_timeout() raises:
     var parser = InputParser()
     assert_equal(len(parser.feed([UInt8(0x1B)])), 0)
     var events = parser.flush_escape()
-    assert_equal(key(events[0].copy()).code, KeyEvent.ESCAPE)
+    assert_true(key(events[0].copy()).code == KeyEvent.ESCAPE)
 
 
 def test_alt_character() raises:
@@ -70,7 +70,7 @@ def test_alt_character() raises:
     var events = parser.feed(bytes2(0x1B, 0x78))
     var event = key(events[0].copy())
     assert_equal(event.text, "x")
-    assert_equal(event.modifiers, KeyEvent.ALT)
+    assert_true(event.modifiers == KeyEvent.ALT)
 
 
 def test_modified_arrow_and_shift_tab() raises:
@@ -85,13 +85,13 @@ def test_modified_arrow_and_shift_tab() raises:
     ]
     var arrows = parser.feed(modified^)
     var arrow = key(arrows[0].copy())
-    assert_equal(arrow.code, KeyEvent.UP)
-    assert_equal(arrow.modifiers, KeyEvent.CONTROL)
+    assert_true(arrow.code == KeyEvent.UP)
+    assert_true(arrow.modifiers == KeyEvent.CONTROL)
 
     var tabs = parser.feed(bytes3(0x1B, 0x5B, 0x5A))
     var tab = key(tabs[0].copy())
-    assert_equal(tab.code, KeyEvent.TAB)
-    assert_equal(tab.modifiers, KeyEvent.SHIFT)
+    assert_true(tab.code == KeyEvent.TAB)
+    assert_true(tab.modifiers == KeyEvent.SHIFT)
 
 
 def test_control_character() raises:
@@ -99,7 +99,7 @@ def test_control_character() raises:
     var events = parser.feed([UInt8(0x03)])
     var event = key(events[0].copy())
     assert_equal(event.text, "c")
-    assert_equal(event.modifiers, KeyEvent.CONTROL)
+    assert_true(event.modifiers == KeyEvent.CONTROL)
 
 
 def test_focus_events() raises:
@@ -129,8 +129,9 @@ def test_sgr_mouse_press_and_coordinates() raises:
     var events = parser.feed(sequence^)
     assert_true(events[0].isa[MouseEvent]())
     var mouse = events[0][MouseEvent].copy()
-    assert_equal(mouse.kind, MouseEvent.PRESS)
-    assert_equal(mouse.button, MouseEvent.LEFT)
+    assert_true(mouse.kind == MouseEvent.PRESS)
+    assert_true(mouse.button)
+    assert_true(mouse.button.value() == MouseEvent.LEFT)
     assert_equal(mouse.x, 9)
     assert_equal(mouse.y, 4)
 
@@ -151,9 +152,31 @@ def test_sgr_mouse_move_with_control() raises:
     ]
     var events = parser.feed(sequence^)
     var mouse = events[0][MouseEvent].copy()
-    assert_equal(mouse.kind, MouseEvent.MOVE)
-    assert_equal(mouse.button, MouseEvent.LEFT)
-    assert_equal(mouse.modifiers, KeyEvent.CONTROL)
+    assert_true(mouse.kind == MouseEvent.MOVE)
+    assert_true(mouse.button)
+    assert_true(mouse.button.value() == MouseEvent.LEFT)
+    assert_true(mouse.modifiers == KeyEvent.CONTROL)
+
+
+def test_sgr_scroll_has_no_physical_button() raises:
+    var parser = InputParser()
+    var sequence: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x3C),
+        UInt8(0x36),
+        UInt8(0x34),
+        UInt8(0x3B),
+        UInt8(0x31),
+        UInt8(0x3B),
+        UInt8(0x31),
+        UInt8(0x4D),
+    ]
+    var events = parser.feed(sequence^)
+    var mouse = events[0][MouseEvent].copy()
+    assert_true(mouse.kind == MouseEvent.SCROLL_UP)
+    assert_false(mouse.button)
+    assert_true(mouse.modifiers == KeyEvent.NO_MODIFIERS)
 
 
 def test_fragmented_bracketed_paste() raises:

@@ -3,31 +3,57 @@
 from std.collections import List, Optional
 
 
-struct MessageClass:
+struct MessageClass(Copyable, Equatable, ImplicitlyCopyable):
     """Delivery guarantee selected by the message producer."""
 
-    comptime LOSSLESS = 0
-    comptime LATEST = 1
+    comptime LOSSLESS = MessageClass(0, _validated=True)
+    comptime LATEST = MessageClass(1, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 1:
+            raise Error("invalid message delivery class")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
 
 
-struct EnqueueResult:
+struct EnqueueResult(Copyable, Equatable, ImplicitlyCopyable):
     """Observable result of attempting to enqueue one message."""
 
-    comptime ACCEPTED = 0
-    comptime COALESCED = 1
-    comptime BACKPRESSURE = 2
-    comptime DROPPED_COALESCIBLE = 3
+    comptime ACCEPTED = EnqueueResult(0, _validated=True)
+    comptime COALESCED = EnqueueResult(1, _validated=True)
+    comptime BACKPRESSURE = EnqueueResult(2, _validated=True)
+    comptime DROPPED_COALESCIBLE = EnqueueResult(3, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 3:
+            raise Error("invalid message enqueue result")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
 
 
 struct _QueuedMessage[M: Deinitable & Movable](Movable):
     var message: Optional[Self.M]
-    var message_class: Int
+    var message_class: MessageClass
     var key: String
 
     def __init__(
         out self,
         var message: Self.M,
-        message_class: Int,
+        message_class: MessageClass,
         var key: String = "",
     ):
         self.message = message^
@@ -57,13 +83,17 @@ struct MessageQueue[M: Deinitable & Movable](Movable, Sized):
     def is_empty(self) -> Bool:
         return len(self.items) == 0
 
+    def can_accept_lossless(self) -> Bool:
+        """Return whether one lossless enqueue can succeed without dropping it."""
+        return len(self.items) < self.capacity or self._oldest_coalescible() >= 0
+
     def _oldest_coalescible(self) -> Int:
         for index in range(len(self.items)):
             if self.items[index].message_class == MessageClass.LATEST:
                 return index
         return -1
 
-    def enqueue_lossless(mut self, var message: Self.M) -> Int:
+    def enqueue_lossless(mut self, var message: Self.M) -> EnqueueResult:
         """Enqueue or return explicit `BACKPRESSURE` without changing the queue."""
         if len(self.items) < self.capacity:
             self.items.append(_QueuedMessage(message^, MessageClass.LOSSLESS))
@@ -75,7 +105,7 @@ struct MessageQueue[M: Deinitable & Movable](Movable, Sized):
             return EnqueueResult.ACCEPTED
         return EnqueueResult.BACKPRESSURE
 
-    def enqueue_latest(mut self, var key: String, var message: Self.M) -> Int:
+    def enqueue_latest(mut self, var key: String, var message: Self.M) -> EnqueueResult:
         """Coalesce by a stable non-empty key or report an explicit drop."""
         if key == "":
             return EnqueueResult.DROPPED_COALESCIBLE

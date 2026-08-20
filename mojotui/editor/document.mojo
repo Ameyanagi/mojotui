@@ -3,18 +3,44 @@
 from std.collections import List
 
 
-struct PieceSource:
+struct PieceSource(Copyable, Equatable, ImplicitlyCopyable):
     """The immutable original buffer or append-only edit buffer."""
 
-    comptime ORIGINAL = 0
-    comptime ADD = 1
+    comptime ORIGINAL = PieceSource(0, _validated=True)
+    comptime ADD = PieceSource(1, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 1:
+            raise Error("invalid document piece source")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
 
 
-struct MarkerAffinity:
+struct MarkerAffinity(Copyable, Equatable, ImplicitlyCopyable):
     """How a marker behaves when text is inserted exactly at its offset."""
 
-    comptime BEFORE = 0
-    comptime AFTER = 1
+    comptime BEFORE = MarkerAffinity(0, _validated=True)
+    comptime AFTER = MarkerAffinity(1, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 1:
+            raise Error("invalid marker affinity")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
 
 
 struct MarkerId(Copyable):
@@ -42,10 +68,10 @@ struct TextPosition(Copyable):
 struct _Marker(Copyable):
     var id: MarkerId
     var offset: Int
-    var affinity: Int
+    var affinity: MarkerAffinity
     var active: Bool
 
-    def __init__(out self, id: MarkerId, offset: Int, affinity: Int):
+    def __init__(out self, id: MarkerId, offset: Int, affinity: MarkerAffinity):
         self.id = id.copy()
         self.offset = offset
         self.affinity = affinity
@@ -53,14 +79,14 @@ struct _Marker(Copyable):
 
 
 struct _Piece(Copyable):
-    var source: Int
+    var source: PieceSource
     var start: Int
     var byte_length: Int
     var newlines: Int
 
     def __init__(
         out self,
-        source: Int,
+        source: PieceSource,
         start: Int,
         byte_length: Int,
         newlines: Int,
@@ -179,19 +205,21 @@ struct Document(Movable):
             self.additions[byte = piece.start : piece.start + piece.byte_length]
         )
 
-    def _source_byte(self, source: Int, offset: Int) -> UInt8:
+    def _source_byte(self, source: PieceSource, offset: Int) -> UInt8:
         if source == PieceSource.ORIGINAL:
             return self.original.as_bytes()[offset]
         return self.additions.as_bytes()[offset]
 
-    def _range_newlines(self, source: Int, start: Int, length: Int) -> Int:
+    def _range_newlines(self, source: PieceSource, start: Int, length: Int) -> Int:
         var count = 0
         for offset in range(start, start + length):
             if self._source_byte(source, offset) == UInt8(0x0A):
                 count += 1
         return count
 
-    def _tree_for_range(mut self, source: Int, start: Int, byte_length: Int) -> Int:
+    def _tree_for_range(
+        mut self, source: PieceSource, start: Int, byte_length: Int
+    ) -> Int:
         """Chunk source ranges so local scans stay bounded on large files."""
         comptime TARGET_BYTES = 4096
         var result = -1
@@ -485,18 +513,14 @@ struct Document(Movable):
     def create_marker(
         mut self,
         offset: Int,
-        affinity: Int = MarkerAffinity.AFTER,
+        affinity: MarkerAffinity = MarkerAffinity.AFTER,
     ) raises -> MarkerId:
         self._validate_range(offset, offset)
         if self.next_marker_id == Int.MAX:
             raise Error("document marker IDs exhausted")
         var id = MarkerId(self.next_marker_id)
         self.next_marker_id += 1
-        var normalized_affinity = (
-            MarkerAffinity.BEFORE if affinity
-            == MarkerAffinity.BEFORE else MarkerAffinity.AFTER
-        )
-        self.markers.append(_Marker(id, offset, normalized_affinity))
+        self.markers.append(_Marker(id, offset, affinity))
         return id^
 
     def marker_offset(self, id: MarkerId) raises -> Int:

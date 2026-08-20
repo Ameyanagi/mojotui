@@ -1,4 +1,4 @@
-from std.testing import TestSuite, assert_equal
+from std.testing import TestSuite, assert_equal, assert_true
 
 from mojotui import (
     Document,
@@ -41,10 +41,12 @@ def test_vertical_motion_preserves_desired_column_across_short_line() raises:
     var selection = Selection.caret(3)
     move_selection_vertical(document, selection, 1)
     assert_equal(selection.head, document.line_end(1))
-    assert_equal(selection.desired_column, 3)
+    assert_true(selection.desired_column)
+    assert_equal(Int(selection.desired_column.value()), 3)
     move_selection_vertical(document, selection, 1)
     assert_equal(selection.head, document.line_start(2) + 3)
-    assert_equal(selection.desired_column, 3)
+    assert_true(selection.desired_column)
+    assert_equal(Int(selection.desired_column.value()), 3)
 
 
 def test_horizontal_motion_collapses_or_extends_selection() raises:

@@ -15,35 +15,55 @@ from .selection import (
 )
 
 
-struct EditorCommandKind:
-    comptime INSERT = 0
-    comptime MOVE_LEFT = 1
-    comptime MOVE_RIGHT = 2
-    comptime MOVE_UP = 3
-    comptime MOVE_DOWN = 4
-    comptime LINE_START = 5
-    comptime LINE_END = 6
-    comptime DOCUMENT_START = 7
-    comptime DOCUMENT_END = 8
-    comptime DELETE_BACKWARD = 9
-    comptime DELETE_FORWARD = 10
-    comptime NEWLINE = 11
-    comptime SELECT_ALL = 12
-    comptime COPY = 13
-    comptime CUT = 14
-    comptime PASTE = 15
-    comptime UNDO = 16
-    comptime REDO = 17
+struct EditorCommandKind(Copyable, Equatable, ImplicitlyCopyable):
+    """Nominal semantic editor operation independent of key bindings."""
+
+    comptime INSERT = EditorCommandKind(0, _validated=True)
+    comptime MOVE_LEFT = EditorCommandKind(1, _validated=True)
+    comptime MOVE_RIGHT = EditorCommandKind(2, _validated=True)
+    comptime MOVE_UP = EditorCommandKind(3, _validated=True)
+    comptime MOVE_DOWN = EditorCommandKind(4, _validated=True)
+    comptime LINE_START = EditorCommandKind(5, _validated=True)
+    comptime LINE_END = EditorCommandKind(6, _validated=True)
+    comptime DOCUMENT_START = EditorCommandKind(7, _validated=True)
+    comptime DOCUMENT_END = EditorCommandKind(8, _validated=True)
+    comptime DELETE_BACKWARD = EditorCommandKind(9, _validated=True)
+    comptime DELETE_FORWARD = EditorCommandKind(10, _validated=True)
+    comptime NEWLINE = EditorCommandKind(11, _validated=True)
+    comptime SELECT_ALL = EditorCommandKind(12, _validated=True)
+    comptime COPY = EditorCommandKind(13, _validated=True)
+    comptime CUT = EditorCommandKind(14, _validated=True)
+    comptime PASTE = EditorCommandKind(15, _validated=True)
+    comptime UNDO = EditorCommandKind(16, _validated=True)
+    comptime REDO = EditorCommandKind(17, _validated=True)
+
+    var _value: Int
+
+    def __init__(out self, value: Int, *, _validated: Bool):
+        self._value = value
+
+    def __init__(out self, value: Int) raises:
+        if value < 0 or value > 17:
+            raise Error("invalid editor command kind")
+        self._value = value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
 
 
 struct EditorCommand(Copyable):
     """A semantic edit/navigation command independent of physical key bindings."""
 
-    var kind: Int
+    var kind: EditorCommandKind
     var text: String
     var extend: Bool
 
-    def __init__(out self, kind: Int, var text: String = "", extend: Bool = False):
+    def __init__(
+        out self,
+        kind: EditorCommandKind,
+        var text: String = "",
+        extend: Bool = False,
+    ):
         self.kind = kind
         self.text = text^
         self.extend = extend
@@ -53,7 +73,7 @@ struct EditorCommand(Copyable):
         return Self(EditorCommandKind.INSERT, text^)
 
     @staticmethod
-    def motion(kind: Int, extend: Bool = False) -> Self:
+    def motion(kind: EditorCommandKind, extend: Bool = False) -> Self:
         return Self(kind, extend=extend)
 
 
@@ -106,7 +126,9 @@ def selected_text(engine: EditorEngine) raises -> String:
     return result^
 
 
-def _move_absolute(mut engine: EditorEngine, kind: Int, extend: Bool) raises:
+def _move_absolute(
+    mut engine: EditorEngine, kind: EditorCommandKind, extend: Bool
+) raises:
     for index in range(len(engine.selections.selections)):
         var selection = engine.selections.selections[index].copy()
         var target: Int
@@ -122,14 +144,16 @@ def _move_absolute(mut engine: EditorEngine, kind: Int, extend: Bool) raises:
                 line
             )
         selection.head = target
-        selection.desired_column = -1
+        selection.desired_column = None
         if not extend:
             selection.anchor = target
         engine.selections.selections[index] = selection.copy()
     engine.selections.normalize(engine.document)
 
 
-def _move_relative(mut engine: EditorEngine, kind: Int, extend: Bool) raises:
+def _move_relative(
+    mut engine: EditorEngine, kind: EditorCommandKind, extend: Bool
+) raises:
     for index in range(len(engine.selections.selections)):
         var selection = engine.selections.selections[index].copy()
         if kind == EditorCommandKind.MOVE_LEFT:

@@ -6,7 +6,7 @@ platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
 version = "0.1.0"
 
 [tasks]
-bench = { cmd = "mojo run -I . benchmarks/render.mojo", description = "Benchmark full and changed 80x24 ANSI frames" }
+bench = { cmd = "mojo run -I . benchmarks/render.mojo", description = "Benchmark full, changed, and unchanged 80x24 ANSI frames" }
 bench-editor = { cmd = "mojo run -I . benchmarks/editor.mojo", description = "Benchmark 10 MiB editor edits, history, and viewport rendering" }
 check = { depends-on = ["test", "lint"], description = "Run the complete non-mutating validation suite" }
 compiler-lint = { cmd = "mojo precompile --Werror mojotui -o .pixi/mojotui-lint.mojoc", description = "Compile the package with warnings treated as errors" }

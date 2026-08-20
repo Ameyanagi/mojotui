@@ -6,17 +6,22 @@ to quit, use the arrow keys to move through the process table, and use Tab or
 the left/right arrows to change the selected tab.
 """
 
-from std.collections import List as MojoList
+from std.collections import List as MojoList, Optional
+from std.utils import Variant
 
 from mojotui import (
+    AdaptiveColor,
     Alignment,
     AnsiBackend,
+    Application,
     Block,
     Buffer,
     Color,
+    Command,
     Constraint,
     Gauge,
-    InputParser,
+    InitResult,
+    InputEvent,
     KeyEvent,
     Layout,
     Line,
@@ -25,31 +30,38 @@ from mojotui import (
     ListItem,
     ListState,
     Paragraph,
-    PosixReactor,
+    ProfiledColor,
     Rect,
+    Ratio,
     Row,
+    RuntimeAdapter,
     Scrollbar,
     ScrollbarState,
     SessionOptions,
     Sparkline,
     Span,
     Style,
+    StylePatch,
+    Subscription,
+    SystemClock,
     Table,
     TableState,
     Tabs,
-    Terminal,
-    TerminalSession,
+    TerminalApplicationHost,
+    TerminalCapabilities,
     Text,
+    UpdateResult,
+    detect_terminal_capabilities,
     render_line,
 )
 
 
-def accent_style() -> Style:
-    return Style(foreground=Color.rgb(80, 200, 255), modifiers=Style.BOLD)
+def accent_style(model: DashboardModel) -> Style:
+    return Style(foreground=model.accent, modifiers=Style.BOLD)
 
 
-def warning_style() -> Style:
-    return Style(foreground=Color.rgb(255, 190, 70), modifiers=Style.BOLD)
+def warning_style(model: DashboardModel) -> Style:
+    return Style(foreground=model.warning, modifiers=Style.BOLD)
 
 
 struct DashboardModel(Copyable):
@@ -61,14 +73,34 @@ struct DashboardModel(Copyable):
     var logs: ListState
     var cpu_history: MojoList[Int]
     var quit: Bool
+    var capabilities: TerminalCapabilities
+    var accent: Color
+    var warning: Color
+    var selected_foreground: Color
 
-    def __init__(out self):
+    def __init__(
+        out self,
+        capabilities: TerminalCapabilities = TerminalCapabilities.headless(),
+    ) raises:
         self.tick = 0
         self.selected_tab = 0
-        self.processes = TableState(selected=0)
+        self.processes = TableState(selected=UInt(0))
         self.logs = ListState()
         self.cpu_history = [18, 24, 31, 27, 42, 38, 51, 46]
         self.quit = False
+        self.capabilities = capabilities
+        self.accent = AdaptiveColor(
+            ProfiledColor.from_rgb(80, 40, 160),
+            ProfiledColor.from_rgb(80, 200, 255),
+        ).resolve(capabilities)
+        self.warning = AdaptiveColor(
+            ProfiledColor.from_rgb(150, 75, 0),
+            ProfiledColor.from_rgb(255, 190, 70),
+        ).resolve(capabilities)
+        self.selected_foreground = AdaptiveColor(
+            ProfiledColor.from_rgb(255, 255, 255),
+            ProfiledColor.from_rgb(10, 20, 30),
+        ).resolve(capabilities)
 
 
 def cpu_percent(model: DashboardModel) -> Int:
@@ -90,35 +122,35 @@ def advance_dashboard(mut model: DashboardModel):
 def process_rows(model: DashboardModel) -> MojoList[Row]:
     var wobble = model.tick % 9
     return [
-        Row(
+        Row.from_lines(
             [
                 Line.from_text("mojo"),
                 Line.from_text(String(21 + wobble) + "%"),
                 Line.from_text("312M"),
             ]
         ),
-        Row(
+        Row.from_lines(
             [
                 Line.from_text("renderer"),
                 Line.from_text(String(14 + (wobble * 2) % 7) + "%"),
                 Line.from_text("108M"),
             ]
         ),
-        Row(
+        Row.from_lines(
             [
                 Line.from_text("indexer"),
                 Line.from_text(String(8 + wobble // 2) + "%"),
                 Line.from_text("86M"),
             ]
         ),
-        Row(
+        Row.from_lines(
             [
                 Line.from_text("compiler"),
                 Line.from_text(String(5 + wobble) + "%"),
                 Line.from_text("244M"),
             ]
         ),
-        Row(
+        Row.from_lines(
             [
                 Line.from_text("shell"),
                 Line.from_text("2%"),
@@ -128,28 +160,28 @@ def process_rows(model: DashboardModel) -> MojoList[Row]:
     ]
 
 
-def render_metric_blocks(model: DashboardModel, area: Rect, mut buffer: Buffer):
+def render_metric_blocks(model: DashboardModel, area: Rect, mut buffer: Buffer) raises:
     var columns = Layout.horizontal(
         [Constraint.fill(), Constraint.fill(), Constraint.fill()], spacing=1
     ).split(area)
     if len(columns) < 3:
         return
 
-    var cpu_block = Block.bordered(Line.from_text(" CPU ", accent_style()))
+    var cpu_block = Block.bordered(Line.from_text(" CPU ", accent_style(model)))
     cpu_block.render(columns[0], buffer)
     var cpu_area = cpu_block.inner(columns[0])
     var cpu = cpu_percent(model)
     Gauge.labeled(
-        Float64(cpu) / 100.0,
+        Ratio.percent(cpu),
         Line.from_text(String(cpu) + "%", alignment=Alignment.CENTER),
-        filled_style=accent_style(),
+        filled_style=accent_style(model),
     ).render(cpu_area, buffer)
 
-    var memory_block = Block.bordered(Line.from_text(" Memory ", warning_style()))
+    var memory_block = Block.bordered(Line.from_text(" Memory ", warning_style(model)))
     memory_block.render(columns[1], buffer)
     var memory_area = memory_block.inner(columns[1])
     var memory = memory_percent(model)
-    LineGauge(Float64(memory) / 100.0, filled_style=warning_style()).render(
+    LineGauge(Ratio.percent(memory), filled_style=warning_style(model)).render(
         memory_area, buffer
     )
     if memory_area.height > 1:
@@ -163,7 +195,9 @@ def render_metric_blocks(model: DashboardModel, area: Rect, mut buffer: Buffer):
     history_block.render(columns[2], buffer)
     var history_area = history_block.inner(columns[2])
     var history = model.cpu_history.copy()
-    Sparkline(history^, maximum=100, style=accent_style()).render(history_area, buffer)
+    Sparkline(history^, maximum=100, style=accent_style(model)).render(
+        history_area, buffer
+    )
 
 
 def render_process_table(mut model: DashboardModel, area: Rect, mut buffer: Buffer):
@@ -181,18 +215,18 @@ def render_process_table(mut model: DashboardModel, area: Rect, mut buffer: Buff
             Constraint.percentage(20),
             Constraint.fill(),
         ],
-        Row(
+        Row.from_lines(
             [
                 Line.from_text("NAME"),
                 Line.from_text("CPU"),
                 Line.from_text("MEM"),
             ]
         ),
-        header_style=Style(modifiers=Style.BOLD | Style.UNDERLINED),
-        selected_style=Style(
-            foreground=Color.rgb(10, 20, 30),
-            background=Color.rgb(80, 200, 255),
-            modifiers=Style.BOLD,
+        header_style=StylePatch(add_modifiers=Style.BOLD | Style.UNDERLINED),
+        selected_style=StylePatch(
+            foreground=model.selected_foreground,
+            background=model.accent,
+            add_modifiers=Style.BOLD,
         ),
     )
     var table_area = Rect(inner.x, inner.y, max(inner.width - 1, 0), inner.height)
@@ -202,7 +236,7 @@ def render_process_table(mut model: DashboardModel, area: Rect, mut buffer: Buff
         position=model.processes.offset,
         viewport_length=max(inner.height - 1, 0),
     )
-    Scrollbar(thumb_style=accent_style()).render(inner, buffer, scroll_state)
+    Scrollbar(thumb_style=accent_style(model)).render(inner, buffer, scroll_state)
 
 
 def render_activity_log(mut model: DashboardModel, area: Rect, mut buffer: Buffer):
@@ -211,7 +245,7 @@ def render_activity_log(mut model: DashboardModel, area: Rect, mut buffer: Buffe
     var inner = block.inner(area)
     var list = List(
         [
-            ListItem.from_text("✓ renderer ready", accent_style()),
+            ListItem.from_text("✓ renderer ready", accent_style(model)),
             ListItem.from_text("↻ frame diffed"),
             ListItem.from_text("⌁ input polled"),
             ListItem.from_text("界 width = 2"),
@@ -222,7 +256,7 @@ def render_activity_log(mut model: DashboardModel, area: Rect, mut buffer: Buffe
     list.render(inner, buffer, model.logs)
 
 
-def render_dashboard(mut model: DashboardModel, area: Rect, mut buffer: Buffer):
+def render_dashboard(mut model: DashboardModel, area: Rect, mut buffer: Buffer) raises:
     """Render one dashboard frame without I/O or hidden global state."""
     if area.width < 40 or area.height < 14:
         Paragraph.with_block(
@@ -243,7 +277,7 @@ def render_dashboard(mut model: DashboardModel, area: Rect, mut buffer: Buffer):
     var header = Block.bordered(
         Line(
             [
-                Span("Mojotui ", accent_style()),
+                Span("Mojotui ", accent_style(model)),
                 Span("dashboard"),
             ]
         ),
@@ -257,7 +291,7 @@ def render_dashboard(mut model: DashboardModel, area: Rect, mut buffer: Buffer):
             Line.from_text("Runtime"),
         ],
         selected=model.selected_tab,
-        selected_style=accent_style(),
+        selected_style=StylePatch.from_style(accent_style(model)),
     ).render(header.inner(regions[0]), buffer)
 
     render_metric_blocks(model, regions[1], buffer)
@@ -272,11 +306,11 @@ def render_dashboard(mut model: DashboardModel, area: Rect, mut buffer: Buffer):
         Text.from_line(
             Line(
                 [
-                    Span("↑/↓", accent_style()),
+                    Span("↑/↓", accent_style(model)),
                     Span(" select  "),
-                    Span("Tab/←/→", accent_style()),
+                    Span("Tab/←/→", accent_style(model)),
                     Span(" view  "),
-                    Span("q", warning_style()),
+                    Span("q", warning_style(model)),
                     Span(" quit"),
                 ]
             )
@@ -289,7 +323,7 @@ def handle_key(mut model: DashboardModel, key: KeyEvent):
     if (
         key.code == KeyEvent.CHARACTER
         and key.text == "c"
-        and (key.modifiers & KeyEvent.CONTROL) != 0
+        and key.modifiers.contains(KeyEvent.CONTROL)
     ):
         model.quit = True
     elif key.code == KeyEvent.CHARACTER and key.text == "q":
@@ -304,40 +338,100 @@ def handle_key(mut model: DashboardModel, key: KeyEvent):
         model.selected_tab = (model.selected_tab + 2) % 3
 
 
-def run_dashboard() raises:
-    var session = TerminalSession(options=SessionOptions(mouse_capture=True))
-    var terminal = Terminal(AnsiBackend.from_terminal())
-    var reactor = PosixReactor()
-    var parser = InputParser()
-    var model = DashboardModel()
+struct DashboardTick(Copyable):
+    def __init__(out self):
+        pass
 
-    while not model.quit:
-        var area = terminal.viewport()
-        var frame = Buffer(area)
-        render_dashboard(model, area, frame)
-        terminal.present(frame)
 
-        var observation = reactor.wait(100)
-        if observation.failed:
-            raise Error("terminal reactor failed")
-        if observation.hangup:
-            break
-        if observation.resized:
-            _ = terminal.backend.refresh_viewport()
-        if observation.input_ready:
-            var events = reactor.read_events(parser)
-            for index in range(len(events)):
-                if events[index].isa[KeyEvent]():
-                    handle_key(model, events[index][KeyEvent].copy())
-        elif observation.timer_elapsed and parser.pending_byte_count() > 0:
-            var events = parser.flush_escape()
-            for index in range(len(events)):
-                if events[index].isa[KeyEvent]():
-                    handle_key(model, events[index][KeyEvent].copy())
-        if observation.timer_elapsed:
+comptime DashboardMessage = Variant[KeyEvent, DashboardTick]
+
+
+struct DashboardApplication(Application, Copyable):
+    comptime Model = DashboardModel
+    comptime Message = DashboardMessage
+    comptime Effect = Bool
+
+    var capabilities: TerminalCapabilities
+
+    def __init__(
+        out self,
+        capabilities: TerminalCapabilities = TerminalCapabilities.headless(),
+    ):
+        self.capabilities = capabilities
+
+    def init(mut self) raises -> InitResult[Self.Model, Self.Effect]:
+        return InitResult[Self.Model, Self.Effect].ready(
+            DashboardModel(self.capabilities)
+        )
+
+    def update(
+        mut self, mut model: Self.Model, var message: Self.Message
+    ) raises -> UpdateResult[Self.Effect]:
+        if message.isa[KeyEvent]():
+            handle_key(model, message[KeyEvent].copy())
+            if model.quit:
+                return UpdateResult[Self.Effect].exit(redraw=True)
+        else:
             advance_dashboard(model)
+        return UpdateResult[Self.Effect].redraw_only()
 
-    session.close()
+    def view(self, model: Self.Model, area: Rect, mut buffer: Buffer) raises:
+        # Stateful widget viewport bookkeeping is frame-local here; durable
+        # application state changes only in `update`.
+        var render_model = model.copy()
+        render_dashboard(render_model, area, buffer)
+
+    def on_input(
+        self, model: Self.Model, var event: InputEvent
+    ) raises -> Optional[Self.Message]:
+        if event.isa[KeyEvent]():
+            return DashboardMessage(event[KeyEvent].copy())
+        return None
+
+    def on_tick(self, model: Self.Model, now_ns: Int) raises -> Optional[Self.Message]:
+        return DashboardMessage(DashboardTick())
+
+
+struct DashboardAdapter(RuntimeAdapter):
+    """No-op boundary ready to be replaced by a general runtime adapter."""
+
+    comptime ApplicationType = DashboardApplication
+
+    def __init__(out self):
+        pass
+
+    def execute(mut self, var command: Command[Self.ApplicationType.Effect]) raises:
+        pass
+
+    def start(
+        mut self, var subscription: Subscription[Self.ApplicationType.Effect]
+    ) raises:
+        pass
+
+    def stop(mut self, id: StringSlice) raises:
+        pass
+
+    def take_messages(mut self) raises -> MojoList[Self.ApplicationType.Message]:
+        return []
+
+    def close(mut self) raises:
+        pass
+
+    def close_silently(mut self):
+        pass
+
+
+def run_dashboard() raises:
+    var capabilities = detect_terminal_capabilities()
+    var host = TerminalApplicationHost(
+        DashboardAdapter(),
+        DashboardApplication(capabilities),
+        SystemClock(),
+        AnsiBackend.from_terminal(capabilities=capabilities),
+        options=SessionOptions(mouse_capture=True),
+        tick_interval_ms=100,
+    )
+    host.run()
 
 
 def main() raises:

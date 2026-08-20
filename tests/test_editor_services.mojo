@@ -94,7 +94,7 @@ def test_file_service_preserves_bom_and_crlf_with_atomic_replace() raises:
     var service = LocalFileService()
     var loaded = service.load(target)
     assert_equal(loaded.content, "a\nb\n")
-    assert_equal(loaded.line_ending, LineEnding.CRLF)
+    assert_true(loaded.line_ending == LineEnding.CRLF)
     assert_true(loaded.had_bom)
     var saved = service.save_atomic(
         target.copy(),

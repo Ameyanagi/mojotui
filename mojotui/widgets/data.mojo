@@ -10,18 +10,30 @@ from ..core.widget import Widget
 from ..text.rich import Alignment, Line, render_line
 
 
-def _safe_ratio(value: Float64) -> Float64:
-    if value != value or value < 0.0:
-        return 0.0
-    if value > 1.0:
-        return 1.0
-    return value
+struct Ratio(Copyable, ImplicitlyCopyable):
+    """A validated finite proportion in the inclusive range zero through one."""
+
+    var _value: Float64
+
+    def __init__(out self, value: Float64) raises:
+        if value != value or value < 0.0 or value > 1.0:
+            raise Error("ratio must be finite and between zero and one")
+        self._value = value
+
+    @staticmethod
+    def percent(value: Int) raises -> Self:
+        if value < 0 or value > 100:
+            raise Error("percentage must be between zero and one hundred")
+        return Self(Float64(value) / 100.0)
+
+    def value(self) -> Float64:
+        return self._value
 
 
 struct Gauge(Copyable, Widget):
     """A horizontal filled-cell gauge with an optional centered label."""
 
-    var ratio: Float64
+    var ratio: Ratio
     var filled_style: Style
     var unfilled_style: Style
     var label: Line
@@ -29,11 +41,11 @@ struct Gauge(Copyable, Widget):
 
     def __init__(
         out self,
-        ratio: Float64,
+        ratio: Ratio,
         filled_style: Style = Style.plain(),
         unfilled_style: Style = Style.plain(),
     ):
-        self.ratio = _safe_ratio(ratio)
+        self.ratio = ratio
         self.filled_style = filled_style.copy()
         self.unfilled_style = unfilled_style.copy()
         self.label = Line()
@@ -41,7 +53,7 @@ struct Gauge(Copyable, Widget):
 
     @staticmethod
     def labeled(
-        ratio: Float64,
+        ratio: Ratio,
         label: Line,
         filled_style: Style = Style.plain(),
         unfilled_style: Style = Style.plain(),
@@ -55,8 +67,9 @@ struct Gauge(Copyable, Widget):
     def render(self, area: Rect, mut buffer: Buffer):
         if area.is_empty():
             return
-        var filled = Int(Float64(area.width) * self.ratio)
-        if self.ratio == 1.0:
+        var ratio = self.ratio.value()
+        var filled = Int(Float64(area.width) * ratio)
+        if ratio == 1.0:
             filled = area.width
         for y in range(area.y, area.bottom()):
             for offset in range(area.width):
@@ -75,25 +88,26 @@ struct Gauge(Copyable, Widget):
 struct LineGauge(Copyable, Widget):
     """A single-row gauge rendered with heavy and light line glyphs."""
 
-    var ratio: Float64
+    var ratio: Ratio
     var filled_style: Style
     var unfilled_style: Style
 
     def __init__(
         out self,
-        ratio: Float64,
+        ratio: Ratio,
         filled_style: Style = Style.plain(),
         unfilled_style: Style = Style.plain(),
     ):
-        self.ratio = _safe_ratio(ratio)
+        self.ratio = ratio
         self.filled_style = filled_style.copy()
         self.unfilled_style = unfilled_style.copy()
 
     def render(self, area: Rect, mut buffer: Buffer):
         if area.is_empty():
             return
-        var filled = Int(Float64(area.width) * self.ratio)
-        if self.ratio == 1.0:
+        var ratio = self.ratio.value()
+        var filled = Int(Float64(area.width) * ratio)
+        if ratio == 1.0:
             filled = area.width
         for offset in range(area.width):
             var is_filled = offset < filled

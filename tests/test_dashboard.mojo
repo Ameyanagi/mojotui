@@ -1,7 +1,14 @@
 from std.testing import TestSuite, assert_equal, assert_true
 
 from examples.dashboard import DashboardModel, advance_dashboard, render_dashboard
-from mojotui import Buffer, Rect
+from mojotui import (
+    Buffer,
+    Color,
+    ColorProfile,
+    Rect,
+    TerminalAppearance,
+    TerminalCapabilities,
+)
 
 
 def row(buffer: Buffer, y: Int) raises -> String:
@@ -41,6 +48,20 @@ def test_dashboard_small_viewport_has_resize_message() raises:
     var area = buffer.area.copy()
     render_dashboard(model, area, buffer)
     assert_true("Resize" in row(buffer, 1))
+
+
+def test_dashboard_theme_resolves_once_for_terminal_capabilities() raises:
+    var ansi16_light = DashboardModel(
+        TerminalCapabilities(ColorProfile.ANSI16, TerminalAppearance.LIGHT)
+    )
+    assert_true(ansi16_light.accent.kind == Color.INDEXED)
+    assert_true(ansi16_light.accent.index() <= 15)
+
+    var truecolor_dark = DashboardModel(
+        TerminalCapabilities(ColorProfile.TRUE_COLOR, TerminalAppearance.DARK)
+    )
+    assert_true(truecolor_dark.accent.equals(Color.rgb(80, 200, 255)))
+    assert_true(truecolor_dark.warning.equals(Color.rgb(255, 190, 70)))
 
 
 def main() raises:

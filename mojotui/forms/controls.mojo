@@ -3,7 +3,7 @@
 from ..core.buffer import Buffer
 from ..core.cell import Cell
 from ..core.geometry import Point, Rect
-from ..core.style import Style
+from ..core.style import Style, StylePatch
 from ..core.widget import StatefulWidget, Widget
 from ..editor.clipboard import Clipboard
 from ..editor.commands import (
@@ -72,11 +72,14 @@ struct TextInput(Copyable, StatefulWidget):
             if not content.is_empty():
                 var placeholder = self.placeholder.copy()
                 for index in range(len(placeholder.spans)):
-                    placeholder.spans[index].style = self.placeholder_style.copy()
+                    placeholder.spans[index].apply_style_patch(
+                        StylePatch.from_style(self.placeholder_style)
+                    )
                 render_line(
                     placeholder,
                     Rect(content.x, content.y, content.width, 1),
                     buffer,
+                    base_style=self.style,
                 )
             return
 
@@ -122,7 +125,7 @@ struct TextArea(Copyable, StatefulWidget):
 
     def __init__(
         out self,
-        wrap_mode: Int = WrapMode.SOFT,
+        wrap_mode: WrapMode = WrapMode.SOFT,
         tab_width: Int = 4,
         show_line_numbers: Bool = False,
         style: Style = Style.plain(),
