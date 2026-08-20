@@ -1,7 +1,7 @@
 # Known limitations
 
-- The project follows a pinned Mojo nightly and has no source-compatibility
-  promise before 1.0.
+- The project follows a pinned stable Mojo release and has no
+  source-compatibility promise before its own 1.0.
 - Windows has no terminal backend or event reactor.
 - Inline rendering follows terminal width but owns a fixed height. Writes
   through the same terminal descriptor while it is active break its cursor

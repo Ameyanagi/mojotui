@@ -22,7 +22,7 @@ The repository currently includes:
   highlighting hooks, and bounded OSC 52 copy support.
 
 The project targets macOS and Linux. The Mojo compiler version is pinned to
-`1.1.0.dev2026081813`, so use Pixi rather than a globally installed compiler.
+stable `1.0.0`, so use Pixi rather than a globally installed compiler.
 
 ## Run it
 
