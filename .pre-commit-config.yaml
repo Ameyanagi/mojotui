@@ -1,0 +1,31 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: &hygiene-exclude >-
+          ^(\.agents/|skills-lock\.json$|pixi\.lock$|tests/fixtures/session_probe\.mojo$|mojotui/text/_unicode_width_data\.mojo$)
+      - id: end-of-file-fixer
+        exclude: *hygiene-exclude
+      - id: check-yaml
+      - id: check-toml
+  - repo: local
+    hooks:
+      - id: format-check
+        name: mojo format check
+        entry: pixi run format-check
+        language: system
+        files: '\.mojo$'
+        pass_filenames: false
+      - id: type-policy-check
+        name: mojo type policy check
+        entry: pixi run type-policy-check
+        language: system
+        files: '\.mojo$'
+        pass_filenames: false
+      - id: unsafe-check
+        name: mojo unsafe boundary check
+        entry: pixi run unsafe-check
+        language: system
+        files: '\.mojo$'
+        pass_filenames: false
