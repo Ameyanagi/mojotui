@@ -1,6 +1,6 @@
 [workspace]
 authors = ["Ameyanagi <ryuichi@ameyanagi.com>"]
-channels = ["https://conda.modular.com/max-nightly", "conda-forge"]
+channels = ["https://conda.modular.com/max", "conda-forge"]
 name = "mojotui"
 platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
 version = "0.1.0"
@@ -23,5 +23,5 @@ type-policy-check = { cmd = "bash scripts/check-types.sh", description = "Reject
 unsafe-check = { cmd = "bash scripts/check-unsafe.sh", description = "Reject unsafe or FFI operations outside the platform boundary" }
 
 [dependencies]
-mojo = "==1.1.0.dev2026081813"
+mojo = "==1.0.0"
 ripgrep = ">=14,<16"

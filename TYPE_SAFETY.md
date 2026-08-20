@@ -23,7 +23,7 @@ References:
 
 ## Enforced rules
 
-- The exact Mojo nightly is pinned in `pixi.toml` and `pixi.lock`.
+- The exact Mojo release is pinned in `pixi.toml` and `pixi.lock`.
 - Package compilation runs with `--Werror`.
 - Function arguments and value-returning functions have compiler-checked
   types; `raises` is explicit on fallible functions.

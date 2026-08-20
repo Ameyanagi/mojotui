@@ -1,8 +1,8 @@
 # API stability tiers
 
-Mojotui is pre-1.0 and pins an exact Mojo nightly. These tiers describe how the
-project manages source changes within that constraint; they are not a 1.0
-compatibility promise.
+Mojotui is pre-1.0 and pins an exact stable Mojo release. These tiers describe
+how the project manages source changes within that constraint; they are not a
+1.0 compatibility promise.
 
 ## Supported foundation
 
