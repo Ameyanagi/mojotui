@@ -34,10 +34,17 @@ provides it on Linux. Then run:
 pixi install --locked
 pixi run check
 pixi run dashboard
+pixi run editor -- notes.txt
 ```
 
 The dashboard exits with `q` or Ctrl-C. Up and Down change the selected process;
 Tab, Left, and Right change the active view.
+
+The editor accepts an optional UTF-8 file path. Ctrl-S saves, Ctrl-Q exits,
+Ctrl-Z/Ctrl-Y undo and redo, and terminal bracketed paste becomes one editor
+transaction. Running `pixi run editor` without a path opens an in-memory
+buffer. See [the editor example guide](docs/editor-example.md) for controls,
+architecture, and headless testing.
 
 `pixi run check` runs the Mojo tests, builds the executable fixtures, exercises
 terminal restoration through a PTY, verifies formatting, compiles with
@@ -124,6 +131,8 @@ backend objects. [TYPE_SAFETY.md](TYPE_SAFETY.md) records the enforced rules.
 - [EDITOR.md](EDITOR.md) covers the editor model and integration points.
 - [RUNTIME.md](RUNTIME.md) defines the task-runtime adapter contract.
 - [docs/dashboard.md](docs/dashboard.md) walks through the example application.
+- [docs/editor-example.md](docs/editor-example.md) explains the interactive
+  editor, typed file effects, and its tests.
 - [docs/custom-widgets.md](docs/custom-widgets.md) shows both widget contracts.
 - [docs/backends.md](docs/backends.md) covers terminal ownership and backends.
 - [docs/api.md](docs/api.md) maps common tasks to public types.

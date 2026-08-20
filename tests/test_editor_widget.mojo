@@ -77,5 +77,21 @@ def test_editor_line_numbers_and_vertical_scroll() raises:
     assert_equal(row(buffer, 1), "3 three ")
 
 
+def test_readonly_editor_render_keeps_model_viewport_unchanged() raises:
+    var state = EditorState("one\ntwo\nthree")
+    state.engine.selections = SelectionSet([Selection.caret(8)])
+    var editor = Editor(show_line_numbers=True)
+    var buffer = Buffer(Rect(0, 0, 8, 2))
+    var area = buffer.area.copy()
+
+    editor.render_readonly(area, buffer, state)
+
+    assert_equal(state.top_line, 0)
+    assert_equal(state.top_visual_row, 0)
+    assert_equal(state.horizontal_offset, 0)
+    assert_equal(row(buffer, 0), "2 two   ")
+    assert_equal(row(buffer, 1), "3 three ")
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

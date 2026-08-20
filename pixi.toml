@@ -11,6 +11,7 @@ bench-editor = { cmd = "mojo run -I . benchmarks/editor.mojo", description = "Be
 check = { depends-on = ["test", "lint"], description = "Run the complete non-mutating validation suite" }
 compiler-lint = { cmd = "mojo precompile --Werror mojotui -o .pixi/mojotui-lint.mojoc", description = "Compile the package with warnings treated as errors" }
 dashboard = { cmd = "mojo run -I . examples/dashboard.mojo", description = "Run the interactive system-monitor dashboard example" }
+editor = { cmd = "mojo run -I . examples/editor.mojo", description = "Run the interactive text editor; pass a file path after --" }
 format = { cmd = "bash scripts/format.sh", description = "Format Mojo source files in place" }
 format-check = { cmd = "bash scripts/check-format.sh", description = "Verify Mojo formatting without modifying source files" }
 generate-unicode = { cmd = "python scripts/generate-unicode-width.py", description = "Regenerate pinned Unicode width tables" }
