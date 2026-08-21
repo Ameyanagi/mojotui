@@ -144,6 +144,8 @@ tests should pass an explicit value when exercising a particular theme.
 
 Typed applications implement the `Application` trait and run under
 `TerminalApplicationHost`; see [the dashboard source](examples/dashboard.mojo).
+The first interactive rung is the [counter tutorial](examples/counter.mojo):
+run it with `pixi run counter` to see the `run(app)` convenience API.
 For a manual event loop without the typed application layer, see
 [the manual-loop hello example](examples/hello_loop.mojo).
 

@@ -14,6 +14,7 @@ bench = { cmd = "mojo run -I . benchmarks/render.mojo", description = "Benchmark
 bench-editor = { cmd = "mojo run -I . benchmarks/editor.mojo", description = "Benchmark 10 MiB editor edits, history, and viewport rendering" }
 check = { depends-on = ["test", "lint"], description = "Run the complete non-mutating validation suite" }
 compiler-lint = { cmd = "mojo precompile --Werror --warn-on-unstable-apis mojotui -o .pixi/mojotui-lint.mojoc", description = "Compile the package with warnings treated as errors" }
+counter = { cmd = "mojo run -I . examples/counter.mojo", description = "Run the counter tutorial example" }
 dashboard = { cmd = "mojo run -I . examples/dashboard.mojo", description = "Run the interactive system-monitor dashboard example" }
 editor = { cmd = "mojo run -I . examples/editor.mojo", description = "Run the interactive text editor; pass a file path after --" }
 format = { cmd = "bash scripts/format.sh", description = "Format Mojo source files in place" }

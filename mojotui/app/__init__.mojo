@@ -1,6 +1,6 @@
 """Typed application contracts and state-management primitives."""
 
-from .adapter import RuntimeAdapter, RuntimeScope
+from .adapter import NoopAdapter, RuntimeAdapter, RuntimeScope
 from .contracts import (
     Application,
     InitResult,
@@ -22,7 +22,7 @@ from .effects import (
     accept_operation_result,
 )
 from .focus import FocusId, FocusManager
-from .host import ApplicationHost, HostSchedule, HostStep, TerminalApplicationHost
+from .host import ApplicationHost, HostSchedule, HostStep, TerminalApplicationHost, run
 from .hit_map import Hit, HitMap
 from .keymap import KeyChord, KeyResolution, Keymap, KeymapState
 from .queue import EnqueueResult, MessageClass, MessageQueue

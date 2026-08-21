@@ -111,7 +111,11 @@ struct TitlePosition(Copyable, Equatable, ImplicitlyCopyable):
 
 
 struct Block(Copyable, Widget):
-    """A styled region with optional borders, title, and inner padding."""
+    """A styled region with optional borders, titles, and inner padding.
+
+    If the positioned title and `bottom_title` share the bottom edge, the
+    bottom title is rendered last and wins where they overlap.
+    """
 
     comptime NONE = Borders.NONE
     comptime TOP = Borders.TOP
@@ -127,6 +131,7 @@ struct Block(Copyable, Widget):
     comptime TITLE_BOTTOM = TitlePosition.BOTTOM
 
     var title: Line
+    var bottom_title: Line
     var style: Style
     var border_style: Style
     var borders: Borders
@@ -144,8 +149,10 @@ struct Block(Copyable, Widget):
         padding_y: Int = 0,
         border_type: BorderType = BorderType.PLAIN,
         title_position: TitlePosition = TitlePosition.TOP,
+        bottom_title: Line = Line(),
     ):
         self.title = title.copy()
+        self.bottom_title = bottom_title.copy()
         self.style = style.copy()
         self.border_style = border_style.copy()
         self.borders = borders
@@ -162,6 +169,7 @@ struct Block(Copyable, Widget):
         padding_y: Int = 0,
         border_type: BorderType = BorderType.PLAIN,
         title_position: TitlePosition = TitlePosition.TOP,
+        bottom_title: Line = Line(),
     ) -> Self:
         return Self(
             title,
@@ -172,6 +180,7 @@ struct Block(Copyable, Widget):
             padding_y,
             border_type,
             title_position,
+            bottom_title,
         )
 
     def with_padding(self, padding: Padding) -> Self:
@@ -187,6 +196,11 @@ struct Block(Copyable, Widget):
     def with_title_position(self, position: TitlePosition) -> Self:
         var result = self.copy()
         result.title_position = position
+        return result^
+
+    def title_bottom(self, title: Line) -> Self:
+        var result = self.copy()
+        result.bottom_title = title.copy()
         return result^
 
     def has_border(self, border: Borders) -> Bool:
@@ -313,6 +327,18 @@ struct Block(Copyable, Widget):
             render_line(
                 self.title,
                 Rect(title_x, title_y, title_width, 1),
+                buffer,
+            )
+        if len(self.bottom_title.spans) > 0:
+            var title_x = area.x + (1 if self.has_border(Self.LEFT) else 0)
+            var title_width = area.width
+            if self.has_border(Self.LEFT) and title_width > 0:
+                title_width -= 1
+            if self.has_border(Self.RIGHT) and title_width > 0:
+                title_width -= 1
+            render_line(
+                self.bottom_title,
+                Rect(title_x, bottom, title_width, 1),
                 buffer,
             )
 

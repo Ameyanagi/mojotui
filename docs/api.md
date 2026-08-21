@@ -17,7 +17,7 @@ application wants narrower imports.
 | Polling | `PosixReactor`, `ReactorPoll` |
 | Application state | `Application`, `InitResult`, `ApplicationRuntime`, `UpdateResult`, `ControlFlow`, `MessageQueue` |
 | Effects | `Command`, `Subscription`, `OperationTracker`, `CancellationToken` |
-| Runtime bridge and host | `RuntimeAdapter`, `RuntimeScope`, `ApplicationHost`, `TerminalApplicationHost`, `HostSchedule`, `HostStep` |
+| Runtime bridge and host | `RuntimeAdapter`, `NoopAdapter`, `RuntimeScope`, `ApplicationHost`, `TerminalApplicationHost`, `HostSchedule`, `HostStep`, `run` |
 | Focus and input mapping | `FocusManager`, `Keymap`, `KeyChord`, `HitMap` |
 | Editor data | `Document`, `SelectionSet`, `EditorEngine`, `EditorCommand`, `EditorCommandKind`, `ControllerActionKind`, `WrapMode`, `LineEnding` |
 | Editor services | `LocalFileService`, `Clipboard`, `MemoryClipboard`, `Osc52Clipboard` |
@@ -48,6 +48,8 @@ chainable `bold()`, `italic()`, `dim()`, `underlined()`, `reversed()`,
 `crossed_out()`, `fg()`, and `bg()` shorthand. `Buffer.set_string()` returns
 `BufferWrite`, so callers can observe clipping; it never writes half of a wide
 grapheme.
+`Color.BLACK` through `Color.WHITE` and `Color.BRIGHT_BLACK` through
+`Color.BRIGHT_WHITE` name the 16 standard ANSI palette entries.
 `Buffer.resize()` retains only complete cell footprints and `Buffer.merge()`
 overlays one complete buffer after growing to their union.
 `Buffer.differences()` returns row-major `BufferDifference` values containing

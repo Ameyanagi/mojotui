@@ -169,6 +169,14 @@ struct KeyEvent(Copyable):
     ) -> Self:
         return Self(code, modifiers=modifiers, kind=kind)
 
+    def is_char(self, text: StringSlice) -> Bool:
+        """True for a press of the given character key (kind, code, and text)."""
+        return (
+            self.kind == KeyEventKind.PRESS
+            and self.code == KeyCode.CHARACTER
+            and self.text == text
+        )
+
 
 struct PasteEvent(Copyable):
     """Text received between bracketed-paste delimiters."""

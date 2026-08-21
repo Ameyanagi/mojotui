@@ -8,6 +8,7 @@ done
 mkdir -p .pixi/test-bin
 mojo build -I . examples/hello.mojo -o .pixi/test-bin/hello
 mojo build -I . examples/hello_loop.mojo -o .pixi/test-bin/hello-loop
+mojo build -I . examples/counter.mojo -o .pixi/test-bin/counter
 mojo build -I . examples/dashboard.mojo -o .pixi/test-bin/dashboard
 mojo build -I . examples/editor.mojo -o .pixi/test-bin/editor
 mojo build -I . examples/fuzzy.mojo -o .pixi/test-bin/fuzzy

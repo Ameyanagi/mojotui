@@ -5,11 +5,13 @@ from std.collections import List, Optional
 from ..core.geometry import Size
 from ..event.input import InputEvent, InputParser
 from ..event.reactor import PosixReactor
-from ..terminal.backend import Backend, Terminal
+from ..terminal.backend import AnsiBackend, Backend, Terminal
+from ..terminal.capabilities import detect_terminal_capabilities
 from ..terminal.session import SessionOptions, TerminalSession
-from .adapter import RuntimeAdapter, RuntimeScope
+from .adapter import NoopAdapter, RuntimeAdapter, RuntimeScope
+from .contracts import Application
 from .queue import EnqueueResult
-from .runtime import ApplicationRuntime, Clock
+from .runtime import ApplicationRuntime, Clock, SystemClock
 
 
 def _saturating_add(left: Int, right: Int) -> Int:
@@ -491,3 +493,22 @@ struct TerminalApplicationHost[
     def __deinit__(deinit self):
         # Owned members provide non-raising fallback cleanup during unwinding.
         pass
+
+
+def run[
+    A: Application
+](
+    var application: A,
+    options: SessionOptions = SessionOptions(),
+    tick_interval_ms: Int = 16,
+) raises:
+    """Run a typed application fullscreen with no background runtime."""
+    var host = TerminalApplicationHost(
+        NoopAdapter[A](),
+        application^,
+        SystemClock(),
+        AnsiBackend.from_terminal(capabilities=detect_terminal_capabilities()),
+        options=options,
+        tick_interval_ms=tick_interval_ms,
+    )
+    host.run()

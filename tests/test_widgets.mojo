@@ -69,6 +69,17 @@ def test_block_border_title_and_inner_area() raises:
     assert_equal(inner.height, 2)
 
 
+def test_block_renders_top_and_bottom_titles_without_clipping_last_character() raises:
+    var block = Block.bordered(Line.from_text("Top")).title_bottom(
+        Line.from_text("Bottom!!")
+    )
+    var area = Rect(0, 0, 10, 3)
+    var buffer = Buffer(area)
+    block.render(area, buffer)
+    assert_equal(row(buffer, 0), "┌Top─────┐")
+    assert_equal(row(buffer, 2), "└Bottom!!┘")
+
+
 def test_paragraph_wraps_inside_block() raises:
     var block = Block.bordered(padding_x=1)
     var paragraph = Paragraph.with_block(Text.from_line(Line.from_text("ab界c")), block)

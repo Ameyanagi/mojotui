@@ -368,13 +368,9 @@ def render_dashboard(mut model: DashboardModel, area: Rect, mut buffer: Buffer) 
 
 
 def handle_key(mut model: DashboardModel, key: KeyEvent):
-    if (
-        key.code == KeyEvent.CHARACTER
-        and key.text == "c"
-        and key.modifiers.contains(KeyEvent.CONTROL)
-    ):
+    if key.is_char("c") and key.modifiers.contains(KeyEvent.CONTROL):
         model.quit = True
-    elif key.code == KeyEvent.CHARACTER and key.text == "q":
+    elif key.is_char("q"):
         model.quit = True
     elif key.code == KeyEvent.DOWN:
         model.processes.next(5)

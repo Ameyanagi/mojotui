@@ -35,6 +35,12 @@ def test_plain_and_combined_keys() raises:
     assert_equal(key(events[1].copy()).text, "b")
 
 
+def test_key_event_is_char_requires_matching_press_character() raises:
+    assert_true(KeyEvent.character("q").is_char("q"))
+    assert_false(KeyEvent.character("q", kind=KeyEvent.RELEASE).is_char("q"))
+    assert_false(KeyEvent(KeyEvent.ENTER, "q").is_char("q"))
+
+
 def test_fragmented_arrow_sequence() raises:
     var parser = InputParser()
     var first = parser.feed(bytes2(0x1B, 0x5B))

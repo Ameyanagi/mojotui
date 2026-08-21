@@ -26,6 +26,7 @@ from .app import (
     OperationId,
     OperationResult,
     OperationTracker,
+    NoopAdapter,
     RuntimeAdapter,
     RuntimeScope,
     Subscription,
@@ -37,6 +38,7 @@ from .app import (
     accept_operation_result,
     dispatch,
     render_application,
+    run,
     subscriptions,
 )
 from .core import (
