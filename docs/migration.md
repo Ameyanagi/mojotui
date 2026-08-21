@@ -66,7 +66,8 @@ The following public values are no longer raw integer tags:
 - `Alignment`
 - `ConstraintKind`, `Direction`, and `Flex`
 - `ScrollbarOrientation`
-- `KeyCode`, `KeyModifiers`, `MouseKind`, `MouseButton`, and `MouseCapture`
+- `KeyCode`, `KeyModifiers`, `KeyEventKind`, `MouseKind`, `MouseButton`, and
+  `MouseCapture`
 - `EditorCommandKind`, `ControllerActionKind`, `MarkerAffinity`, `PieceSource`,
   `WrapMode`, and `LineEnding`
 - `ColorKind`, `ColorProfile`, `TerminalAppearance`, `ModifierSet`, and
@@ -199,6 +200,11 @@ host.run()
 `SessionOptions.mouse: MouseCapture` policy. Choose `MouseCapture.CLICKS`,
 `MouseCapture.DRAG`, or `MouseCapture.MOTION`; the default is
 `MouseCapture.OFF`.
+
+Kitty keyboard disambiguation and event-type reporting are now enabled by
+default as a progressive enhancement. Set
+`SessionOptions(keyboard_enhancement=False)` to opt out; unsupported terminals
+harmlessly ignore the protocol push and pop sequences.
 
 The host owns restoration and adapter shutdown. The adapter still owns and
 executes general background tasks.

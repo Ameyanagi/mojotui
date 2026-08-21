@@ -23,13 +23,18 @@ struct MouseCapture(Copyable, Equatable, ImplicitlyCopyable):
 
 
 struct SessionOptions(Copyable):
-    """Terminal features enabled for the duration of a session."""
+    """Terminal features enabled for the duration of a session.
+
+    Keyboard enhancement is progressive; unsupported terminals harmlessly ignore
+    its push and pop sequences.
+    """
 
     var alternate_screen: Bool
     var hide_cursor: Bool
     var bracketed_paste: Bool
     var focus_events: Bool
     var mouse: MouseCapture
+    var keyboard_enhancement: Bool
 
     def __init__(
         out self,
@@ -38,12 +43,14 @@ struct SessionOptions(Copyable):
         bracketed_paste: Bool = True,
         focus_events: Bool = True,
         mouse: MouseCapture = MouseCapture.OFF,
+        keyboard_enhancement: Bool = True,
     ):
         self.alternate_screen = alternate_screen
         self.hide_cursor = hide_cursor
         self.bracketed_paste = bracketed_paste
         self.focus_events = focus_events
         self.mouse = mouse
+        self.keyboard_enhancement = keyboard_enhancement
 
 
 def session_enter_sequence(options: SessionOptions) -> String:
@@ -63,12 +70,17 @@ def session_enter_sequence(options: SessionOptions) -> String:
         result += "\x1b[?1002h\x1b[?1006h"
     elif options.mouse == MouseCapture.MOTION:
         result += "\x1b[?1003h\x1b[?1006h"
+    if options.keyboard_enhancement:
+        result += "\x1b[>3u"
     return result^
 
 
 def session_leave_sequence(options: SessionOptions) -> String:
     """Build the reverse sequence, leaving style and cursor in safe defaults."""
-    var result = String("\x1b[0m")
+    var result = String()
+    if options.keyboard_enhancement:
+        result += "\x1b[<u"
+    result += "\x1b[0m"
     if options.mouse == MouseCapture.CLICKS:
         result += "\x1b[?1006l\x1b[?1000l"
     elif options.mouse == MouseCapture.DRAG:

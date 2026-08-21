@@ -13,7 +13,7 @@ application wants narrower imports.
 | Render transactions | `Frame`, `CompletedFrame`, `Terminal` |
 | Terminal output | `FramePatch`, `AnsiBackend`, `InlineBackend`, `HeadlessBackend`, `detect_terminal_capabilities`, `terminal_capabilities_from_environment` |
 | Terminal lifecycle | `TerminalSession`, `SessionOptions`, `MouseCapture` |
-| Input | `InputParser`, `InputEvent`, `KeyCode`, `KeyModifiers`, `KeyEvent`, `MouseKind`, `MouseButton`, `MouseEvent`, `PasteEvent` |
+| Input | `InputParser`, `InputEvent`, `KeyCode`, `KeyModifiers`, `KeyEventKind`, `KeyEvent`, `MouseKind`, `MouseButton`, `MouseEvent`, `PasteEvent` |
 | Polling | `PosixReactor`, `ReactorPoll` |
 | Application state | `Application`, `InitResult`, `ApplicationRuntime`, `UpdateResult`, `ControlFlow`, `MessageQueue` |
 | Effects | `Command`, `Subscription`, `OperationTracker`, `CancellationToken` |
@@ -119,6 +119,12 @@ the application at compile time. `HostSchedule` independently tracks ticks,
 Escape resolution, frame cadence, and optional adapter deadlines. Host turns
 retain lossless adapter backlogs, process a bounded message batch, reconcile
 subscriptions once, and coalesce only latest-value tick and resize messages.
+
+Kitty keyboard disambiguation and event-type reporting are progressive session
+enhancements enabled by default through `SessionOptions.keyboard_enhancement`.
+Supporting terminals report `KeyEvent.kind` as press, repeat, or release and
+avoid legacy Escape ambiguity; terminals without the protocol harmlessly ignore
+the session push and pop sequences.
 
 Every backend implements `capabilities()`, and `Terminal.capabilities()`
 forwards that configured value. `HeadlessBackend` defaults deterministically to

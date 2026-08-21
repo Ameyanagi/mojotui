@@ -74,6 +74,7 @@ from .event import (
     InputParser,
     KeyCode,
     KeyEvent,
+    KeyEventKind,
     KeyModifiers,
     MouseButton,
     MouseEvent,
