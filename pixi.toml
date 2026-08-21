@@ -20,7 +20,7 @@ format = { cmd = "bash scripts/format.sh", description = "Format Mojo source fil
 fuzzy = { cmd = "mojo run -I . examples/fuzzy.mojo", description = "Run the interactive fuzzy-picker example" }
 format-check = { cmd = "bash scripts/check-format.sh", description = "Verify Mojo formatting without modifying source files" }
 lint = { depends-on = ["format-check", "type-check", "unsafe-check"], description = "Run formatting, strict-type, and unsafe-boundary checks" }
-package = { cmd = "rattler-build build --recipe conda.recipe/recipe.yaml -c conda-forge -c https://conda.modular.com/max -c https://repo.prefix.dev/modular-community", description = "Build the local Conda package" }
+package = { cmd = "rattler-build build --recipe conda.recipe/recipe.yaml -c https://ameyanagi.github.io/mojo-channel -c conda-forge -c https://conda.modular.com/max -c https://repo.prefix.dev/modular-community", description = "Build the local Conda package" }
 precompile = { cmd = "mojo precompile mojotui -o .pixi/mojotui-check.mojoc", description = "Precompile the mojotui package" }
 test = { cmd = "bash scripts/test.sh", description = "Run all Mojo TestSuite files" }
 type-check = { depends-on = ["type-policy-check", "compiler-lint"], description = "Enforce static API policy and compile with warnings as errors" }
