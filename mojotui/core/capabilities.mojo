@@ -20,7 +20,9 @@ struct ColorProfile(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 3:
-            raise Error("invalid terminal color profile")
+            raise Error(
+                String("terminal color profile must be within [0, 3]; got ", value)
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -41,7 +43,9 @@ struct TerminalAppearance(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 2:
-            raise Error("invalid terminal appearance")
+            raise Error(
+                String("terminal appearance must be within [0, 2]; got ", value)
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -217,13 +221,38 @@ struct ProfiledColor(Copyable):
         true_color: Color,
     ) raises:
         if monochrome.kind != ColorKind.DEFAULT:
-            raise Error("monochrome fallback must use the default color")
-        if ansi16.kind == ColorKind.RGB or (
-            ansi16.kind == ColorKind.INDEXED and ansi16.index() > 15
-        ):
-            raise Error("ANSI-16 fallback must be default or indexed 0 through 15")
+            if monochrome.kind == ColorKind.INDEXED:
+                raise Error(
+                    String(
+                        (
+                            "monochrome fallback must use the default color; got color"
+                            " index "
+                        ),
+                        monochrome.index(),
+                    )
+                )
+            raise Error(
+                "monochrome fallback must use the default color; got an RGB color"
+            )
+        if ansi16.kind == ColorKind.RGB:
+            raise Error(
+                "ANSI-16 fallback must be default or indexed 0 through 15; got an RGB"
+                " color"
+            )
+        if ansi16.kind == ColorKind.INDEXED and ansi16.index() > 15:
+            raise Error(
+                String(
+                    (
+                        "ANSI-16 fallback must be default or indexed 0 through 15; got"
+                        " color index "
+                    ),
+                    ansi16.index(),
+                )
+            )
         if ansi256.kind == ColorKind.RGB:
-            raise Error("ANSI-256 fallback must be default or indexed")
+            raise Error(
+                "ANSI-256 fallback must be default or indexed; got an RGB color"
+            )
         self.monochrome = monochrome.copy()
         self.ansi16 = ansi16.copy()
         self.ansi256 = ansi256.copy()
@@ -235,9 +264,13 @@ struct ProfiledColor(Copyable):
         var resolved = Color.rgb(red, green, blue)
         return Self(
             Color.default(),
-            Color.indexed(_nearest_ansi16(resolved.red, resolved.green, resolved.blue)),
-            Color.indexed(
-                _nearest_ansi256(resolved.red, resolved.green, resolved.blue)
+            Color(
+                Color.INDEXED,
+                _nearest_ansi16(resolved.red, resolved.green, resolved.blue),
+            ),
+            Color(
+                Color.INDEXED,
+                _nearest_ansi256(resolved.red, resolved.green, resolved.blue),
             ),
             resolved,
         )

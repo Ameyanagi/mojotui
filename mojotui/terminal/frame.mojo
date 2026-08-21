@@ -115,7 +115,27 @@ def diff_frame(
 ) raises -> FramePatch:
     """Collect safe row-major changes without emitting wide continuations."""
     if not before.area.equals(after.area):
-        raise Error("frame diff buffers must have equal areas")
+        raise Error(
+            String(
+                "frame diff buffers must have equal areas; got before=Rect(",
+                before.area.x,
+                ", ",
+                before.area.y,
+                ", ",
+                before.area.width,
+                ", ",
+                before.area.height,
+                "), after=Rect(",
+                after.area.x,
+                ", ",
+                after.area.y,
+                ", ",
+                after.area.width,
+                ", ",
+                after.area.height,
+                ")",
+            )
+        )
 
     var changes = List[CellChange]()
     var blank = Cell.blank()

@@ -16,7 +16,9 @@ struct MessageClass(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 1:
-            raise Error("invalid message delivery class")
+            raise Error(
+                String("message delivery class must be within [0, 1]; got ", value)
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -38,7 +40,9 @@ struct EnqueueResult(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 3:
-            raise Error("invalid message enqueue result")
+            raise Error(
+                String("message enqueue result must be within [0, 3]; got ", value)
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:

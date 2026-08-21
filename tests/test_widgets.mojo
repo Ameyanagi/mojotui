@@ -150,8 +150,20 @@ def test_fill_clips_single_column_symbol_and_style() raises:
     assert_equal(row(buffer, 1), " ... ")
     assert_true(buffer.cell({1, 1}).style.has(Style.BOLD))
 
-    with assert_raises(contains="exactly one column"):
+    with assert_raises(
+        contains=(
+            "fill symbol must be exactly one grapheme occupying one terminal"
+            ' column; got "界"'
+        )
+    ):
         _ = Fill("界")
+    with assert_raises(
+        contains=(
+            "fill symbol must be exactly one grapheme occupying one terminal"
+            ' column; got "ab"'
+        )
+    ):
+        _ = Fill("ab")
 
 
 def test_gauge_and_line_gauge_snapshots() raises:
@@ -438,12 +450,20 @@ def test_scrollbar_fills_track_when_content_fits() raises:
 
 
 def test_ratio_and_scrollbar_symbols_reject_invalid_configuration() raises:
-    with assert_raises(contains="ratio must be finite"):
+    with assert_raises(contains="ratio must be finite and within [0, 1]; got -0.1"):
         _ = Ratio(-0.1)
-    with assert_raises(contains="ratio must be finite"):
+    with assert_raises(contains="ratio must be finite and within [0, 1]; got nan"):
         _ = Ratio(Float64("nan"))
-    with assert_raises(contains="track must be exactly one terminal column"):
+    with assert_raises(contains="percent must be within [0, 100]; got 101"):
+        _ = Ratio.percent(101)
+    with assert_raises(
+        contains='scrollbar track symbol must be exactly one terminal column; got "界"'
+    ):
         _ = ScrollbarSymbols("界", "█")
+    with assert_raises(
+        contains='scrollbar thumb symbol must be exactly one terminal column; got "界"'
+    ):
+        _ = ScrollbarSymbols("│", "界")
 
 
 def main() raises:

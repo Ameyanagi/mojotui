@@ -42,7 +42,7 @@ struct Alignment(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 2:
-            raise Error("invalid text alignment")
+            raise Error(String("text alignment must be within [0, 2]; got ", value))
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:

@@ -44,7 +44,9 @@ struct EditorCommandKind(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 17:
-            raise Error("invalid editor command kind")
+            raise Error(
+                String("editor command kind must be within [0, 17]; got ", value)
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:

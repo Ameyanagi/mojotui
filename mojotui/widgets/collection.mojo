@@ -68,7 +68,9 @@ struct HighlightSpacing(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 2:
-            raise Error("invalid list highlight spacing")
+            raise Error(
+                String("list highlight spacing must be within [0, 2]; got ", value)
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -298,7 +300,9 @@ struct TableSelection(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 3:
-            raise Error("invalid table selection mode")
+            raise Error(
+                String("table selection mode must be within [0, 3]; got ", value)
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:

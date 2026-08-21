@@ -30,6 +30,7 @@ from mojotui import (
     InitResult,
     LineEnding,
     MarkerAffinity,
+    MessageClass,
     ModifierSet,
     MouseButton,
     MouseKind,
@@ -147,49 +148,57 @@ def test_widget_renders_through_static_contract() raises:
 
 
 def test_nominal_public_values_reject_invalid_discriminants() raises:
-    with assert_raises(contains="invalid text alignment"):
+    with assert_raises(contains="text alignment must be within [0, 2]; got 3"):
         _ = Alignment(3)
-    with assert_raises(contains="invalid layout direction"):
+    with assert_raises(contains="layout direction must be within [0, 1]; got -1"):
         _ = Direction(-1)
-    with assert_raises(contains="invalid message enqueue result"):
+    with assert_raises(contains="message enqueue result must be within [0, 3]; got 4"):
         _ = EnqueueResult(4)
-    with assert_raises(contains="invalid scrollbar orientation"):
+    with assert_raises(contains="message delivery class must be within [0, 1]; got 2"):
+        _ = MessageClass(2)
+    with assert_raises(contains="scrollbar orientation must be within [0, 1]; got 2"):
         _ = ScrollbarOrientation(2)
-    with assert_raises(contains="invalid editor wrap mode"):
+    with assert_raises(contains="editor wrap mode must be within [0, 1]; got 9"):
         _ = WrapMode(9)
-    with assert_raises(contains="invalid key code"):
+    with assert_raises(contains="key code must be within [0, 26]; got 27"):
         _ = KeyCode(27)
-    with assert_raises(contains="invalid key modifier flags"):
+    with assert_raises(contains="key modifier flags must be within [0, 7]; got 8"):
         _ = KeyModifiers(8)
-    with assert_raises(contains="invalid mouse event kind"):
+    with assert_raises(contains="mouse event kind must be within [0, 4]; got 5"):
         _ = MouseKind(5)
-    with assert_raises(contains="invalid mouse button"):
+    with assert_raises(contains="mouse button must be within [0, 2]; got -1"):
         _ = MouseButton(-1)
-    with assert_raises(contains="invalid editor command kind"):
+    with assert_raises(contains="editor command kind must be within [0, 17]; got 18"):
         _ = EditorCommandKind(18)
-    with assert_raises(contains="invalid editor controller action kind"):
+    with assert_raises(
+        contains="editor controller action kind must be within [0, 2]; got 3"
+    ):
         _ = ControllerActionKind(3)
-    with assert_raises(contains="invalid marker affinity"):
+    with assert_raises(contains="marker affinity must be within [0, 1]; got 2"):
         _ = MarkerAffinity(2)
-    with assert_raises(contains="invalid document piece source"):
+    with assert_raises(contains="document piece source must be within [0, 1]; got -1"):
         _ = PieceSource(-1)
-    with assert_raises(contains="invalid file line ending"):
+    with assert_raises(contains="file line ending must be within [0, 1]; got 2"):
         _ = LineEnding(2)
-    with assert_raises(contains="invalid terminal color kind"):
+    with assert_raises(contains="terminal color kind must be within [0, 2]; got 3"):
         _ = ColorKind(3)
-    with assert_raises(contains="invalid terminal modifier flags"):
+    with assert_raises(
+        contains="terminal modifier flags must be within [0, 255]; got 256"
+    ):
         _ = ModifierSet(256)
-    with assert_raises(contains="invalid block border flags"):
+    with assert_raises(contains="block border flags must be within [0, 15]; got 16"):
         _ = Borders(16)
-    with assert_raises(contains="invalid border type"):
+    with assert_raises(contains="border type must be within [0, 3]; got 4"):
         _ = BorderType(4)
-    with assert_raises(contains="invalid block title position"):
+    with assert_raises(contains="block title position must be within [0, 1]; got 2"):
         _ = TitlePosition(2)
-    with assert_raises(contains="invalid list highlight spacing"):
+    with assert_raises(contains="list highlight spacing must be within [0, 2]; got 3"):
         _ = HighlightSpacing(3)
-    with assert_raises(contains="invalid table selection mode"):
+    with assert_raises(contains="table selection mode must be within [0, 3]; got 4"):
         _ = TableSelection(4)
-    with assert_raises(contains="invalid application control flow"):
+    with assert_raises(
+        contains="application control flow must be within [0, 1]; got 2"
+    ):
         _ = ControlFlow(2)
 
 
@@ -234,7 +243,12 @@ def test_terminal_rejects_stale_frames_and_out_of_bounds_cursor() raises:
 
     var invalid = terminal.begin_frame()
     invalid.set_cursor_position({2, 0})
-    with assert_raises(contains="cursor is outside"):
+    with assert_raises(
+        contains=(
+            "requested cursor is outside the completed frame; got cursor (2, 0),"
+            " frame=Rect(0, 0, 2, 1)"
+        )
+    ):
         _ = terminal.finish_frame(invalid^)
 
 

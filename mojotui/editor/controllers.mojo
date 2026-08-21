@@ -21,7 +21,12 @@ struct ControllerActionKind(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 2:
-            raise Error("invalid editor controller action kind")
+            raise Error(
+                String(
+                    "editor controller action kind must be within [0, 2]; got ",
+                    value,
+                )
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:

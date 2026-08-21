@@ -79,7 +79,14 @@ struct Size(Copyable):
 
     def area(self) raises -> Int:
         if self.width != 0 and self.height > Int.MAX // self.width:
-            raise Error("size area exceeds Int.MAX")
+            raise Error(
+                String(
+                    "size area must not exceed Int.MAX; got width=",
+                    self.width,
+                    ", height=",
+                    self.height,
+                )
+            )
         return self.width * self.height
 
     def equals(self, other: Self) -> Bool:

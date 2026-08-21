@@ -8,6 +8,7 @@ from ..core.geometry import Point, Rect
 from ..core.style import Style
 from ..core.widget import Widget
 from ..text.rich import Alignment, Line, Text, render_line, render_text
+from ..text.width import grapheme_width
 
 
 struct Borders(Copyable, Equatable, ImplicitlyCopyable):
@@ -27,7 +28,7 @@ struct Borders(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, bits: Int) raises:
         if bits < 0 or (bits & ~((1 << 4) - 1)) != 0:
-            raise Error("invalid block border flags")
+            raise Error(String("block border flags must be within [0, 15]; got ", bits))
         self._bits = bits
 
     def __eq__(self, other: Self) -> Bool:
@@ -80,7 +81,7 @@ struct BorderType(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 3:
-            raise Error("invalid border type")
+            raise Error(String("border type must be within [0, 3]; got ", value))
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -100,7 +101,9 @@ struct TitlePosition(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 1:
-            raise Error("invalid block title position")
+            raise Error(
+                String("block title position must be within [0, 1]; got ", value)
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -334,10 +337,21 @@ struct Fill(Copyable, Widget):
         var symbol: String = " ",
         style: Style = Style.plain(),
     ) raises:
-        var cell = Cell.from_grapheme(symbol^, style=style)
-        if cell.width != 1:
-            raise Error("fill symbol must occupy exactly one column")
-        self.cell = cell^
+        var valid = StringSlice(symbol).count_graphemes() == 1
+        if valid:
+            valid = grapheme_width(symbol) == 1
+        if not valid:
+            raise Error(
+                String(
+                    (
+                        "fill symbol must be exactly one grapheme occupying one"
+                        ' terminal column; got "'
+                    ),
+                    symbol,
+                    '"',
+                )
+            )
+        self.cell = Cell(symbol^, 1, style=style)
 
     def render(self, area: Rect, mut buffer: Buffer):
         buffer.fill(area, self.cell)

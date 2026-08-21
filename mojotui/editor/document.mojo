@@ -16,7 +16,9 @@ struct PieceSource(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 1:
-            raise Error("invalid document piece source")
+            raise Error(
+                String("document piece source must be within [0, 1]; got ", value)
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -36,7 +38,7 @@ struct MarkerAffinity(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 1:
-            raise Error("invalid marker affinity")
+            raise Error(String("marker affinity must be within [0, 1]; got ", value))
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:

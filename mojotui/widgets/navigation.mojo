@@ -72,7 +72,9 @@ struct ScrollbarOrientation(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 1:
-            raise Error("invalid scrollbar orientation")
+            raise Error(
+                String("scrollbar orientation must be within [0, 1]; got ", value)
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -139,9 +141,21 @@ struct ScrollbarSymbols(Copyable):
 
     def __init__(out self, var track: String, var thumb: String) raises:
         if not _is_one_column_symbol(track):
-            raise Error("scrollbar track must be exactly one terminal column")
+            raise Error(
+                String(
+                    'scrollbar track symbol must be exactly one terminal column; got "',
+                    track,
+                    '"',
+                )
+            )
         if not _is_one_column_symbol(thumb):
-            raise Error("scrollbar thumb must be exactly one terminal column")
+            raise Error(
+                String(
+                    'scrollbar thumb symbol must be exactly one terminal column; got "',
+                    thumb,
+                    '"',
+                )
+            )
         self.track = track^
         self.thumb = thumb^
 
