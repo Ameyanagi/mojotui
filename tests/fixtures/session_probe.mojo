@@ -88,6 +88,7 @@ def test_options() -> SessionOptions:
         bracketed_paste=False,
         focus_events=False,
         mouse=MouseCapture.OFF,
+        keyboard_enhancement=False,
     )
 
 

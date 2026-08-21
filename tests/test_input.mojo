@@ -29,7 +29,9 @@ def test_plain_and_combined_keys() raises:
     var parser = InputParser()
     var events = parser.feed(bytes2(0x61, 0x62))
     assert_equal(len(events), 2)
-    assert_equal(key(events[0].copy()).text, "a")
+    var first = key(events[0].copy())
+    assert_equal(first.text, "a")
+    assert_true(first.kind == KeyEvent.PRESS)
     assert_equal(key(events[1].copy()).text, "b")
 
 
@@ -130,6 +132,122 @@ def test_modified_csi_function_keys() raises:
     var navigation_key = key(navigation_events[0].copy())
     assert_true(navigation_key.code == KeyEvent.HOME)
     assert_true(navigation_key.modifiers == KeyEvent.CONTROL)
+
+
+def test_csi_u_character_with_control() raises:
+    var parser = InputParser()
+    var sequence: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x39),
+        UInt8(0x37),
+        UInt8(0x3B),
+        UInt8(0x35),
+        UInt8(0x75),
+    ]
+    var events = parser.feed(sequence^)
+    assert_equal(len(events), 1)
+    var event = key(events[0].copy())
+    assert_true(event.code == KeyEvent.CHARACTER)
+    assert_equal(event.text, "a")
+    assert_true(event.modifiers == KeyEvent.CONTROL)
+    assert_true(event.kind == KeyEvent.PRESS)
+
+
+def test_csi_u_release_without_modifiers() raises:
+    var parser = InputParser()
+    var sequence: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x39),
+        UInt8(0x37),
+        UInt8(0x3B),
+        UInt8(0x31),
+        UInt8(0x3A),
+        UInt8(0x33),
+        UInt8(0x75),
+    ]
+    var events = parser.feed(sequence^)
+    assert_equal(len(events), 1)
+    var event = key(events[0].copy())
+    assert_true(event.code == KeyEvent.CHARACTER)
+    assert_equal(event.text, "a")
+    assert_true(event.modifiers == KeyEvent.NO_MODIFIERS)
+    assert_true(event.kind == KeyEvent.RELEASE)
+
+
+def test_csi_u_disambiguates_escape() raises:
+    var parser = InputParser()
+    var sequence: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x32),
+        UInt8(0x37),
+        UInt8(0x75),
+    ]
+    var events = parser.feed(sequence^)
+    assert_equal(len(events), 1)
+    var event = key(events[0].copy())
+    assert_true(event.code == KeyEvent.ESCAPE)
+    assert_true(event.modifiers == KeyEvent.NO_MODIFIERS)
+    assert_true(event.kind == KeyEvent.PRESS)
+    assert_equal(parser.pending_byte_count(), 0)
+
+
+def test_csi_u_named_key_with_shift_repeat() raises:
+    var parser = InputParser()
+    var sequence: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x31),
+        UInt8(0x33),
+        UInt8(0x3B),
+        UInt8(0x32),
+        UInt8(0x3A),
+        UInt8(0x32),
+        UInt8(0x75),
+    ]
+    var events = parser.feed(sequence^)
+    assert_equal(len(events), 1)
+    var event = key(events[0].copy())
+    assert_true(event.code == KeyEvent.ENTER)
+    assert_true(event.modifiers == KeyEvent.SHIFT)
+    assert_true(event.kind == KeyEvent.REPEAT)
+
+
+def test_csi_u_masks_lock_modifier_bits() raises:
+    var parser = InputParser()
+    var sequence: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x39),
+        UInt8(0x37),
+        UInt8(0x3B),
+        UInt8(0x36),
+        UInt8(0x35),
+        UInt8(0x75),
+    ]
+    var events = parser.feed(sequence^)
+    assert_equal(len(events), 1)
+    var event = key(events[0].copy())
+    assert_true(event.code == KeyEvent.CHARACTER)
+    assert_equal(event.text, "a")
+    assert_true(event.modifiers == KeyEvent.NO_MODIFIERS)
+    assert_true(event.kind == KeyEvent.PRESS)
+
+
+def test_malformed_csi_u_is_unknown() raises:
+    var parser = InputParser()
+    var sequence: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x3B),
+        UInt8(0x75),
+    ]
+    var events = parser.feed(sequence^)
+    assert_equal(len(events), 1)
+    assert_true(events[0].isa[UnknownEvent]())
+    assert_equal(events[0][UnknownEvent].sequence, "\x1b[;u")
 
 
 def test_fragmented_utf8_character() raises:

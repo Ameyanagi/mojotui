@@ -81,8 +81,24 @@ struct KeyModifiers(Copyable, Equatable, ImplicitlyCopyable):
         return Self(self._bits | modifier._bits, _validated=True)
 
 
+struct KeyEventKind(Copyable, Equatable, ImplicitlyCopyable):
+    """Nominal semantic kind of a keyboard event."""
+
+    comptime PRESS = KeyEventKind(_value=0)
+    comptime REPEAT = KeyEventKind(_value=1)
+    comptime RELEASE = KeyEventKind(_value=2)
+
+    var _value: Int
+
+    def __init__(out self, *, _value: Int):
+        self._value = _value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
+
+
 struct KeyEvent(Copyable):
-    """A keyboard event with a semantic key code and modifier mask."""
+    """A keyboard event with a semantic key code, modifiers, and event kind."""
 
     comptime CHARACTER = KeyCode.CHARACTER
     comptime ESCAPE = KeyCode.ESCAPE
@@ -117,29 +133,45 @@ struct KeyEvent(Copyable):
     comptime ALT = KeyModifiers.ALT
     comptime CONTROL = KeyModifiers.CONTROL
 
+    comptime PRESS = KeyEventKind.PRESS
+    comptime REPEAT = KeyEventKind.REPEAT
+    comptime RELEASE = KeyEventKind.RELEASE
+
     var code: KeyCode
     var text: String
     var modifiers: KeyModifiers
+    var kind: KeyEventKind
 
     def __init__(
         out self,
         code: KeyCode,
         var text: String = "",
         modifiers: KeyModifiers = KeyModifiers.NONE,
+        *,
+        kind: KeyEventKind = KeyEventKind.PRESS,
     ):
         self.code = code
         self.text = text^
         self.modifiers = modifiers
+        self.kind = kind
 
     @staticmethod
     def character(
-        var text: String, modifiers: KeyModifiers = KeyModifiers.NONE
+        var text: String,
+        modifiers: KeyModifiers = KeyModifiers.NONE,
+        *,
+        kind: KeyEventKind = KeyEventKind.PRESS,
     ) -> Self:
-        return Self(Self.CHARACTER, text^, modifiers)
+        return Self(Self.CHARACTER, text^, modifiers, kind=kind)
 
     @staticmethod
-    def named(code: KeyCode, modifiers: KeyModifiers = KeyModifiers.NONE) -> Self:
-        return Self(code, modifiers=modifiers)
+    def named(
+        code: KeyCode,
+        modifiers: KeyModifiers = KeyModifiers.NONE,
+        *,
+        kind: KeyEventKind = KeyEventKind.PRESS,
+    ) -> Self:
+        return Self(code, modifiers=modifiers, kind=kind)
 
 
 struct PasteEvent(Copyable):
@@ -542,6 +574,79 @@ struct InputParser(Movable):
         )
         return True
 
+    def _parse_csi_u(mut self, mut events: List[InputEvent], length: Int) -> Bool:
+        if Int(self._byte(length - 1)) != 0x75:
+            return False
+
+        var separator = -1
+        var kind_separator = -1
+        for offset in range(2, length - 1):
+            var value = Int(self._byte(offset))
+            if value == 0x3B:
+                if separator >= 0 or kind_separator >= 0:
+                    return False
+                separator = offset
+            elif value == 0x3A:
+                if separator < 0 or kind_separator >= 0:
+                    return False
+                kind_separator = offset
+
+        var codepoint_end = separator if separator >= 0 else length - 1
+        var codepoint = self._decimal(2, codepoint_end)
+        if codepoint < 0 or codepoint > 0x10FFFF:
+            return False
+
+        var modifiers = KeyModifiers.NONE
+        var kind = KeyEvent.PRESS
+        if separator >= 0:
+            var modifiers_end = kind_separator if kind_separator >= 0 else length - 1
+            var modifier_parameter = self._decimal(separator + 1, modifiers_end)
+            if modifier_parameter < 1 or modifier_parameter > 255:
+                return False
+            modifiers = KeyModifiers((modifier_parameter - 1) & 7, _validated=True)
+            if kind_separator >= 0:
+                var event_type = self._decimal(kind_separator + 1, length - 1)
+                if event_type == 2:
+                    kind = KeyEvent.REPEAT
+                elif event_type == 3:
+                    kind = KeyEvent.RELEASE
+                elif event_type != 1:
+                    return False
+
+        if codepoint == 27:
+            self._consume(length)
+            events.append(
+                InputEvent(KeyEvent.named(KeyEvent.ESCAPE, modifiers, kind=kind))
+            )
+            return True
+        if codepoint == 13:
+            self._consume(length)
+            events.append(
+                InputEvent(KeyEvent.named(KeyEvent.ENTER, modifiers, kind=kind))
+            )
+            return True
+        if codepoint == 9:
+            self._consume(length)
+            events.append(
+                InputEvent(KeyEvent.named(KeyEvent.TAB, modifiers, kind=kind))
+            )
+            return True
+        if codepoint == 127:
+            self._consume(length)
+            events.append(
+                InputEvent(KeyEvent.named(KeyEvent.BACKSPACE, modifiers, kind=kind))
+            )
+            return True
+
+        var scalar = Codepoint.from_u32(UInt32(codepoint))
+        if not scalar:
+            return False
+        var text = String()
+        text.append(scalar.value())
+        self._consume(length)
+        events.append(InputEvent(KeyEvent.character(text^, modifiers, kind=kind)))
+        return True
+
     def _parse_csi(mut self, mut events: List[InputEvent]) -> Bool:
         var length = self._csi_length()
         if length == 0:
@@ -616,6 +721,9 @@ struct InputParser(Movable):
             self._consume(length)
             self.paste_bytes.clear()
             self.in_paste = True
+            return True
+
+        if self._parse_csi_u(events, length):
             return True
 
         var sequence = self._slice_string(0, length)
