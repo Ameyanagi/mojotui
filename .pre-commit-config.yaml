@@ -4,7 +4,7 @@ repos:
     hooks:
       - id: trailing-whitespace
         exclude: &hygiene-exclude >-
-          ^(\.agents/|skills-lock\.json$|pixi\.lock$|tests/fixtures/session_probe\.mojo$|mojotui/text/_unicode_width_data\.mojo$)
+          ^(\.agents/|skills-lock\.json$|pixi\.lock$|tests/fixtures/session_probe\.mojo$)
       - id: end-of-file-fixer
         exclude: *hygiene-exclude
       - id: check-yaml

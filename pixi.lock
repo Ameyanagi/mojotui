@@ -20,6 +20,7 @@ platforms:
 environments:
   default:
     channels:
+    - url: file:///Users/ryuichi/dev/moji/output/
     - url: https://conda.modular.com/max/
     - url: https://conda.anaconda.org/conda-forge/
     packages:
@@ -132,6 +133,7 @@ environments:
       - conda: https://conda.modular.com/max/noarch/mblack-26.5.0-release.conda
       - conda: https://conda.modular.com/max/noarch/mojo-python-1.0.0-release.conda
       osx-arm64:
+      - conda: /Users/ryuichi/dev/moji/output/osx-arm64/mojo-moji-0.0.0-h60d57d3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-hbd8a1cb_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/click-8.4.2-pyhc90fa1f_0.conda
@@ -179,6 +181,16 @@ environments:
       - conda: https://conda.modular.com/max/osx-arm64/mojo-1.0.0-release.conda
       - conda: https://conda.modular.com/max/osx-arm64/mojo-compiler-1.0.0-release.conda
 packages:
+- conda: /Users/ryuichi/dev/moji/output/osx-arm64/mojo-moji-0.0.0-h60d57d3_0.conda
+  subdir: osx-arm64
+  sha256: 7f27858e0125bd92c768b416e137ce6900c853b6c21c710d54743b80de0991c1
+  md5: 0868d961856f560e233624fa1fc2395b
+  depends:
+  - mojo-compiler >=1.0.0,<2.0a0
+  channel: file:///Users/ryuichi/dev/moji/output
+  license: MIT OR Apache-2.0
+  size: 49893
+  timestamp: 1787220258858
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
   build_number: 20
   sha256: 1dd3fffd892081df9726d7eb7e0dea6198962ba775bd88842135a4ddb4deb3c9

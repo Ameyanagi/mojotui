@@ -1,4 +1,5 @@
-from std.testing import TestSuite, assert_equal, assert_true
+from std.collections import List as MojoList
+from std.testing import TestSuite, assert_equal, assert_raises, assert_true
 
 from mojotui import (
     Alignment,
@@ -19,6 +20,94 @@ from mojotui import (
 def test_span_and_line_widths_follow_terminal_columns() raises:
     var line = Line([Span("a"), Span("界"), Span("e\u0301")])
     assert_equal(line.width(), 4)
+
+
+def test_highlighted_partitions_ascii_and_merges_adjacent_positions() raises:
+    var patch = StylePatch(
+        foreground=Color.indexed(3),
+        add_modifiers=Style.BOLD,
+    )
+    var single: MojoList[Int] = [1]
+    var line = Line.highlighted("abc", single, patch)
+    assert_equal(len(line.spans), 3)
+    assert_equal(line.spans[0].content, "a")
+    assert_equal(line.spans[1].content, "b")
+    assert_equal(line.spans[2].content, "c")
+    assert_true(line.spans[1].resolved_style().equals(patch.resolved()))
+
+    var adjacent: MojoList[Int] = [1, 2]
+    var merged = Line.highlighted("abcd", adjacent, patch)
+    assert_equal(len(merged.spans), 3)
+    assert_equal(merged.spans[1].content, "bc")
+
+
+def test_highlighted_propagates_moji_position_errors() raises:
+    var unsorted: MojoList[Int] = [2, 1]
+    with assert_raises(contains="code-point positions must be strictly increasing"):
+        _ = Line.highlighted("abc", unsorted, StylePatch.plain())
+
+    var out_of_range: MojoList[Int] = [3]
+    with assert_raises(
+        contains="code-point index 3 is outside text code-point count 3"
+    ):
+        _ = Line.highlighted("abc", out_of_range, StylePatch.plain())
+
+
+def test_highlighted_empty_positions_use_base_style_for_whole_line() raises:
+    var positions = MojoList[Int]()
+    var base = StylePatch(
+        background=Color.indexed(4),
+        add_modifiers=Style.UNDERLINED,
+    )
+    var line = Line.highlighted(
+        "whole", positions, StylePatch(add_modifiers=Style.BOLD), base=base
+    )
+    assert_equal(len(line.spans), 1)
+    assert_equal(line.spans[0].content, "whole")
+    assert_true(line.spans[0].resolved_style().equals(base.resolved()))
+
+
+def test_highlighted_expands_matches_to_wide_grapheme_boundaries() raises:
+    var patch = StylePatch(
+        foreground=Color.indexed(5),
+        add_modifiers=Style.BOLD,
+    )
+    var middle_of_zwj: MojoList[Int] = [3]
+    var family = Line.highlighted("a👩‍👩‍👧b", middle_of_zwj, patch)
+    assert_equal(len(family.spans), 3)
+    assert_equal(family.spans[0].content, "a")
+    assert_equal(family.spans[1].content, "👩‍👩‍👧")
+    assert_equal(family.spans[2].content, "b")
+
+    var buffer = Buffer(Rect(0, 0, 4, 1))
+    var area = buffer.area.copy()
+    render_line(family, area, buffer)
+    assert_equal(buffer.cell({0, 0}).symbol, "a")
+    assert_equal(buffer.cell({1, 0}).symbol, "👩‍👩‍👧")
+    assert_true(buffer.cell({2, 0}).continuation)
+    assert_equal(buffer.cell({3, 0}).symbol, "b")
+    assert_true(buffer.cell({1, 0}).style.equals(patch.resolved()))
+
+    var cjk_position: MojoList[Int] = [1]
+    var cjk = Line.highlighted("a界b", cjk_position, patch)
+    assert_equal(cjk.spans[1].content, "界")
+    assert_equal(cjk.spans[1].width(), 2)
+
+
+def test_highlighted_composes_base_and_match_styles() raises:
+    var base = StylePatch(
+        background=Color.indexed(1),
+        add_modifiers=Style.UNDERLINED,
+    )
+    var patch = StylePatch(
+        foreground=Color.indexed(6),
+        add_modifiers=Style.BOLD,
+    )
+    var positions: MojoList[Int] = [1]
+    var line = Line.highlighted("abc", positions, patch, base=base)
+    assert_true(line.spans[0].resolved_style().equals(base.resolved()))
+    assert_true(line.spans[1].resolved_style().equals(base.then(patch).resolved()))
+    assert_true(line.spans[2].resolved_style().equals(base.resolved()))
 
 
 def test_line_style_patch_preserves_individual_span_foregrounds() raises:

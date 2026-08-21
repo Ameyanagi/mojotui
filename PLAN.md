@@ -57,7 +57,7 @@ by stable key. Resize queries use the output descriptor, inline width follows
 the terminal, and a split-descriptor PTY test covers that path. Rich-text spans
 and selection states now carry `StylePatch`, while cells retain resolved
 `Style`. Gauges use validated `Ratio`, scrollbars use validated symbol pairs,
-and wrapping uses checksum-pinned Unicode 17 whitespace data. Stage H is also
+and wrapping uses Unicode 17 whitespace data. Stage H is also
 implemented locally: nominal capabilities, explicit profile fallbacks,
 light/dark/unknown adaptive colors, conservative environment detection,
 backend and terminal capability reporting, portable ANSI-16 output, dashboard
@@ -260,7 +260,8 @@ dependency direction must remain from higher layers toward lower layers.
 
 - Strings remain UTF-8.
 - Rendering and editing operate on extended grapheme clusters.
-- Mojotui owns versioned, generated terminal-width tables.
+- Mojotui delegates terminal-width data to the versioned moji package, the
+  ecosystem source of truth.
 - Terminal width is always zero, one, or two cells for a rendered grapheme.
 - Ambiguous-width behavior is configurable.
 - Tests cover combining marks, CJK, emoji, ZWJ sequences, flags, variation
@@ -677,7 +678,7 @@ Deliverables:
 8. Compare direct FFI with a minimal private C shim if ABI mapping is brittle.
 9. Run one AsyncRT task without blocking terminal input.
 10. Test cancellation or safe stale-result rejection and reactor wakeup.
-11. Generate and query a small Unicode terminal-width table.
+11. Prove Unicode terminal-width lookup against the moji package.
 12. Compile representative generic `Backend`, `Widget`, and `Application`
     contracts.
 13. Benchmark a full and changed 80x24 cell buffer.
@@ -852,7 +853,7 @@ after every target passes.
 | Mojo async APIs change | Keep stable APIs runtime-neutral; isolate the experimental adapter. |
 | POSIX ABIs differ | Use a narrow audited boundary and allow a minimal C shim. |
 | Dynamic trait objects are unavailable | Use static generics, immediate rendering, and closed variants. |
-| Grapheme count differs from terminal width | Own versioned width tables and conformance tests. |
+| Grapheme count differs from terminal width | Use moji's versioned width tables and conformance tests. |
 | Nightly compiler changes break source | Pin exact versions and upgrade through tested commits. |
 | Editor scope delays usable rendering | Ship it as an independent later subsystem. |
 | Terminal state leaks after failure | Use a session guard and PTY lifecycle tests. |
