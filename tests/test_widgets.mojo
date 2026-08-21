@@ -1,3 +1,4 @@
+from std.collections import List as MojoList
 from std.testing import (
     TestSuite,
     assert_equal,
@@ -7,6 +8,7 @@ from std.testing import (
 )
 
 from mojotui import (
+    BarChart,
     Block,
     BorderType,
     Buffer,
@@ -173,6 +175,78 @@ def test_sparkline_uses_newest_visible_samples() raises:
     var area = buffer.area.copy()
     sparkline.render(area, buffer)
     assert_equal(row(buffer, 0), "▂▃▄█")
+
+
+def test_bar_chart_full_height_and_partial_eighth_bars() raises:
+    var buffer = Buffer(Rect(0, 0, 3, 2))
+    var area = buffer.area.copy()
+    var values: MojoList[Float64] = [8.0, 4.0, 1.0]
+    BarChart(values, gap=0, maximum=8.0).render(area, buffer)
+    assert_equal(row(buffer, 0), "█  ")
+    assert_equal(row(buffer, 1), "██▂")
+
+
+def test_bar_chart_wide_bars_gaps_and_labels() raises:
+    var buffer = Buffer(Rect(0, 0, 5, 3))
+    var area = buffer.area.copy()
+    var values: MojoList[Float64] = [8.0, 4.0]
+    var labels: MojoList[String] = ["A", "B"]
+    BarChart(
+        values,
+        labels=labels,
+        bar_width=2,
+        gap=1,
+        maximum=8.0,
+    ).render(area, buffer)
+    assert_equal(row(buffer, 0), "██   ")
+    assert_equal(row(buffer, 1), "██ ██")
+    assert_equal(row(buffer, 2), "A  B ")
+
+
+def test_bar_chart_skips_a_partially_clipped_bar() raises:
+    var buffer = Buffer(Rect(0, 0, 4, 1))
+    var area = buffer.area.copy()
+    var values: MojoList[Float64] = [1.0, 1.0]
+    BarChart(values, bar_width=2, gap=1, maximum=1.0).render(area, buffer)
+    assert_equal(row(buffer, 0), "██  ")
+
+
+def test_bar_chart_defaults_maximum_and_handles_all_zero_values() raises:
+    var scaled = Buffer(Rect(0, 0, 2, 1))
+    var scaled_area = scaled.area.copy()
+    var scaled_values: MojoList[Float64] = [2.0, 1.0]
+    BarChart(scaled_values, gap=0).render(scaled_area, scaled)
+    assert_equal(row(scaled, 0), "█▄")
+
+    var zero = Buffer(Rect(0, 0, 2, 1))
+    var zero_area = zero.area.copy()
+    var zero_values: MojoList[Float64] = [0.0, 0.0]
+    BarChart(zero_values, gap=0).render(zero_area, zero)
+    assert_equal(row(zero, 0), "  ")
+
+
+def test_bar_chart_rejects_invalid_configuration() raises:
+    var nan_values: MojoList[Float64] = [Float64("nan")]
+    with assert_raises(
+        contains="values[0] must be non-NaN and within [0, inf]; got nan"
+    ):
+        _ = BarChart(nan_values)
+    var negative_values: MojoList[Float64] = [-1.0]
+    with assert_raises(
+        contains="values[0] must be non-NaN and within [0, inf]; got -1.0"
+    ):
+        _ = BarChart(negative_values)
+    var single_value: MojoList[Float64] = [1.0]
+    with assert_raises(contains="bar_width must be within [1, Int.MAX]; got 0"):
+        _ = BarChart(single_value, bar_width=0)
+    var mismatched_labels: MojoList[String] = ["A", "B"]
+    with assert_raises(
+        contains=(
+            "labels must be empty or match len(values); got len(labels)=2,"
+            " len(values)=1"
+        )
+    ):
+        _ = BarChart(single_value, labels=mismatched_labels)
 
 
 def test_widget_styles_are_written_to_cells() raises:

@@ -175,6 +175,7 @@ from .text import (
     unicode_version,
 )
 from .widgets import (
+    BarChart,
     Block,
     BorderType,
     Borders,
