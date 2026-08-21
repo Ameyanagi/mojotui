@@ -20,7 +20,7 @@ from .collection import (
     TableSelection,
     TableState,
 )
-from .data import Gauge, LineGauge, Ratio, Sparkline
+from .data import BarChart, Gauge, LineGauge, Ratio, Sparkline
 from .navigation import (
     Scrollbar,
     ScrollbarOrientation,
