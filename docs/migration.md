@@ -275,8 +275,8 @@ Scrollbar(symbols=ScrollbarSymbols("·", "█"))
 ```
 
 Both symbols must contain exactly one grapheme occupying one terminal column.
-Word wrapping now classifies separators with the checksum-pinned Unicode 17
-`White_Space` property rather than an ASCII-only space/tab test.
+Word wrapping now classifies separators with the Unicode 17 `White_Space`
+property rather than an ASCII-only space/tab test.
 
 ## Adaptive colors and terminal capabilities
 

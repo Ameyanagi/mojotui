@@ -33,7 +33,7 @@ Mojo exposes a supported public task runtime.
 
 ## Internal boundary
 
-Private names, files under `platform`, generated Unicode tables, test fixtures,
+Private names, files under `platform`, test fixtures,
 and implementation details have no source-compatibility promise. The platform
 boundary remains covered by the unsafe allowlist and integration tests, but it
 is not an extension API.

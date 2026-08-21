@@ -37,9 +37,10 @@ with the input reactor so its reply cannot be parsed as keyboard input.
 default color. A directly constructed RGB `Style` is explicit application
 intent and is not automatically removed by `NO_COLOR`.
 
-The renderer uses its pinned Unicode width table rather than terminal queries.
-Ambiguous-width characters default to one column; callers can request wide
-ambiguous characters in the text-width functions.
+The renderer uses the moji package's Unicode 17 width data—the ecosystem's
+single source of truth—rather than terminal queries. Ambiguous-width characters
+default to one column; callers can request wide ambiguous characters in the
+text-width functions.
 
 OSC 52 clipboard writes are opt-in and capped by the provider's `max_bytes`.
 Terminal emulators and multiplexers may disable OSC 52 or apply a smaller cap.

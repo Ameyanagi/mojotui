@@ -11,7 +11,7 @@ on macOS ARM64, Linux ARM64, and Linux x86-64.
 
 - Mojo `1.1.0.dev2026081813` (`8cd05901`)
 - Pixi `0.76.2`
-- Unicode data `17.0.0`, generated from checksum-pinned Unicode sources
+- Unicode width data `17.0.0`, provided by the installed moji package
 - Workspace targets: `osx-arm64`, `linux-64`, and `linux-aarch64`
 
 `pixi.lock` resolves the exact Mojo build for every target. The GitHub Actions
