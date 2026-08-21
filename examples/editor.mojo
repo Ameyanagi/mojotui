@@ -44,7 +44,6 @@ from mojotui import (
     Rect,
     RuntimeAdapter,
     SaveOptions,
-    SessionOptions,
     Span,
     Style,
     Subscription,
@@ -501,7 +500,6 @@ def run_editor(var path: String = "") raises:
         EditorApplication(path^, capabilities),
         SystemClock(),
         AnsiBackend.from_terminal(capabilities=capabilities),
-        options=SessionOptions(mouse_capture=False),
         tick_interval_ms=250,
     )
     host.run()

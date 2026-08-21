@@ -158,6 +158,19 @@ struct Rect(Copyable):
             self.height - inset_height * 2,
         )
 
+    def centered(self, width: Int, height: Int) -> Self:
+        """Center clamped extents within this rectangle."""
+        if self.is_empty():
+            return Self(self.x, self.y, 0, 0)
+        var centered_width = max(0, min(width, self.width))
+        var centered_height = max(0, min(height, self.height))
+        return Self(
+            self.x + (self.width - centered_width) // 2,
+            self.y + (self.height - centered_height) // 2,
+            centered_width,
+            centered_height,
+        )
+
     def translated(self, dx: Int, dy: Int) -> Self:
         return Self(
             _saturating_add(self.x, dx),

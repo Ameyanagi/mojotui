@@ -148,6 +148,7 @@ from .terminal import (
     FramePatch,
     HeadlessBackend,
     InlineBackend,
+    MouseCapture,
     SessionOptions,
     Terminal,
     TerminalSession,

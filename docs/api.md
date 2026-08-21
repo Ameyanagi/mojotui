@@ -12,7 +12,7 @@ application wants narrower imports.
 | Stateful widgets | `List`, `HighlightSpacing`, `Table`, `TableSelection`, `Scrollbar`, `ScrollbarSymbols`, `Editor`, `TextInput`, `TextArea` and their state types |
 | Render transactions | `Frame`, `CompletedFrame`, `Terminal` |
 | Terminal output | `FramePatch`, `AnsiBackend`, `InlineBackend`, `HeadlessBackend`, `detect_terminal_capabilities`, `terminal_capabilities_from_environment` |
-| Terminal lifecycle | `TerminalSession`, `SessionOptions` |
+| Terminal lifecycle | `TerminalSession`, `SessionOptions`, `MouseCapture` |
 | Input | `InputParser`, `InputEvent`, `KeyCode`, `KeyModifiers`, `KeyEvent`, `MouseKind`, `MouseButton`, `MouseEvent`, `PasteEvent` |
 | Polling | `PosixReactor`, `ReactorPoll` |
 | Application state | `Application`, `InitResult`, `ApplicationRuntime`, `UpdateResult`, `ControlFlow`, `MessageQueue` |
@@ -33,12 +33,17 @@ kinds, colors, style modifiers, and border sets. `ListState.selected` and
 
 `Style` is a resolved cell style. `StylePatch` carries only requested changes,
 including independent modifier additions and removals, and patches compose with
-later changes taking precedence. `Buffer.set_string()` returns `BufferWrite`,
-so callers can observe clipping; it never writes half of a wide grapheme.
+later changes taking precedence. Both types, plus `Span` and `Line`, provide
+chainable `bold()`, `italic()`, `dim()`, `underlined()`, `reversed()`,
+`crossed_out()`, `fg()`, and `bg()` shorthand. `Buffer.set_string()` returns
+`BufferWrite`, so callers can observe clipping; it never writes half of a wide
+grapheme.
 `Buffer.resize()` retains only complete cell footprints and `Buffer.merge()`
 overlays one complete buffer after growing to their union.
 `Buffer.differences()` returns row-major `BufferDifference` values containing
 both resolved cells and rejects buffers with different areas.
+`Rect.centered(width, height)` clamps requested extents and centers them with
+odd remainders biased toward the left and top.
 
 `ColorProfile` distinguishes monochrome, ANSI-16, ANSI-256, and truecolor
 targets. `TerminalAppearance` distinguishes light, dark, and unknown
@@ -106,7 +111,9 @@ default to no work. `UpdateResult.exit()` requests orderly loop shutdown.
 state, and terminal frames without owning a platform session.
 `TerminalApplicationHost` additionally owns the terminal session, POSIX
 reactor, incremental parser, and their cleanup; `SessionOptions` selects
-fullscreen or inline-compatible behavior. A `RuntimeAdapter` declares one
+fullscreen or inline-compatible behavior, while `MouseCapture` selects clicks,
+drag tracking, all motion, or no mouse capture. `KeyCode.F1` through
+`KeyCode.F12` represent terminal function keys. A `RuntimeAdapter` declares one
 `ApplicationType`, so its effect inputs and message outputs are proven to match
 the application at compile time. `HostSchedule` independently tracks ticks,
 Escape resolution, frame cadence, and optional adapter deadlines. Host turns
@@ -115,8 +122,11 @@ subscriptions once, and coalesce only latest-value tick and resize messages.
 
 Every backend implements `capabilities()`, and `Terminal.capabilities()`
 forwards that configured value. `HeadlessBackend` defaults deterministically to
-ANSI-16 on a dark background. ANSI and inline backends detect conservative
-environment hints unless their `capabilities` constructor argument is set.
+ANSI-16 on a dark background with synchronized output disabled. ANSI and inline
+backends detect conservative environment hints unless their `capabilities`
+constructor argument is set. Known mode-2026 terminals set
+`TerminalCapabilities.synchronized_output`, causing each nonempty presentation
+to be bracketed as one synchronized update.
 
 See [API stability tiers](stability.md) for the supported foundation,
 experimental ecosystem, and internal platform boundary.

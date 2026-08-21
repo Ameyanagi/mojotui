@@ -281,12 +281,12 @@ struct AnsiBackend(Backend):
         if not patch.area.equals(self.area):
             raise Error("frame patch does not match ANSI backend viewport")
         var encoded = _encode_ansi_patch(patch)
-        var output = FileDescriptor(self.output_descriptor)
-        if self.first_frame or patch.full_redraw:
-            output.write_string("\x1b[2J\x1b[H")
-            self.first_frame = False
+        var presentation = String()
+        var reset_screen = self.first_frame or patch.full_redraw
+        if reset_screen:
+            presentation += "\x1b[2J\x1b[H"
         if encoded:
-            output.write_string(encoded)
+            presentation += encoded
         var cursor_output = String()
         if patch.cursor:
             var point = patch.cursor.value().copy()
@@ -301,7 +301,18 @@ struct AnsiBackend(Backend):
         elif self.cursor:
             cursor_output += "\x1b[?25l"
         if cursor_output:
-            output.write_string(cursor_output)
+            presentation += cursor_output
+        if presentation:
+            var output = String()
+            if self.terminal_capabilities.synchronized_output:
+                output += "\x1b[?2026h"
+            output += presentation
+            if self.terminal_capabilities.synchronized_output:
+                output += "\x1b[?2026l"
+            var descriptor = FileDescriptor(self.output_descriptor)
+            descriptor.write_string(output)
+        if reset_screen:
+            self.first_frame = False
         self.cursor = patch.cursor.copy()
 
     def clear(mut self) raises:
@@ -404,7 +415,13 @@ struct InlineBackend(Backend):
         if patch.cursor:
             self._place_cursor(encoded, patch.cursor.value())
         if encoded:
-            output.write_string(encoded)
+            var presentation = String()
+            if self.terminal_capabilities.synchronized_output:
+                presentation += "\x1b[?2026h"
+            presentation += encoded
+            if self.terminal_capabilities.synchronized_output:
+                presentation += "\x1b[?2026l"
+            output.write_string(presentation)
 
     def clear(mut self):
         """Erase the owned rows; the next presentation reserves them again."""

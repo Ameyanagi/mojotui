@@ -5,7 +5,7 @@ from std.collections import List
 from ..core.buffer import Buffer, BufferWrite
 from ..core.cell import Cell
 from ..core.geometry import Point, Rect
-from ..core.style import Style, StylePatch
+from ..core.style import Color, Style, StylePatch
 from ..core.widget import Widget
 from ._unicode_width_data import is_whitespace
 from .width import grapheme_width, text_width
@@ -181,6 +181,30 @@ struct Span(Copyable, Widget):
         result.apply_style_patch(patch)
         return result^
 
+    def bold(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.BOLD))
+
+    def italic(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.ITALIC))
+
+    def dim(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.DIM))
+
+    def underlined(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.UNDERLINED))
+
+    def reversed(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.REVERSED))
+
+    def crossed_out(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.CROSSED_OUT))
+
+    def fg(self, color: Color) -> Self:
+        return self.patched_style(StylePatch(foreground=color))
+
+    def bg(self, color: Color) -> Self:
+        return self.patched_style(StylePatch(background=color))
+
 
 struct Line(Copyable, Widget):
     """A logical line composed of styled spans."""
@@ -276,6 +300,30 @@ struct Line(Copyable, Widget):
         var result = self.copy()
         result.apply_style_patch(patch)
         return result^
+
+    def bold(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.BOLD))
+
+    def italic(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.ITALIC))
+
+    def dim(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.DIM))
+
+    def underlined(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.UNDERLINED))
+
+    def reversed(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.REVERSED))
+
+    def crossed_out(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.CROSSED_OUT))
+
+    def fg(self, color: Color) -> Self:
+        return self.patched_style(StylePatch(foreground=color))
+
+    def bg(self, color: Color) -> Self:
+        return self.patched_style(StylePatch(background=color))
 
     def wrapped(
         self, maximum_width: Int, ambiguous_is_wide: Bool = False

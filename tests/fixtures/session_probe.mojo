@@ -14,6 +14,7 @@ from mojotui import (
     InlineBackend,
     KeyEvent,
     ManualClock,
+    MouseCapture,
     PosixReactor,
     Rect,
     RuntimeAdapter,
@@ -86,6 +87,7 @@ def test_options() -> SessionOptions:
         hide_cursor=False,
         bracketed_paste=False,
         focus_events=False,
+        mouse=MouseCapture.OFF,
     )
 
 

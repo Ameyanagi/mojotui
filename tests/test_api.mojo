@@ -158,7 +158,7 @@ def test_nominal_public_values_reject_invalid_discriminants() raises:
     with assert_raises(contains="invalid editor wrap mode"):
         _ = WrapMode(9)
     with assert_raises(contains="invalid key code"):
-        _ = KeyCode(15)
+        _ = KeyCode(27)
     with assert_raises(contains="invalid key modifier flags"):
         _ = KeyModifiers(8)
     with assert_raises(contains="invalid mouse event kind"):

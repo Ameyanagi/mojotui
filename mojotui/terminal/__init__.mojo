@@ -13,6 +13,7 @@ from .capabilities import (
 )
 from .frame import CellChange, CompletedFrame, Frame, FramePatch, diff_frame
 from .session import (
+    MouseCapture,
     SessionOptions,
     TerminalSession,
     session_enter_sequence,
