@@ -61,6 +61,25 @@ def test_rect_inset_clamps_to_empty() raises:
     assert_equal(inset.height, 1)
 
 
+def test_rect_centered_places_exact_extents() raises:
+    var centered = Rect(10, 20, 10, 8).centered(4, 2)
+    assert_true(centered.equals(Rect(13, 23, 4, 2)))
+
+
+def test_rect_centered_biases_odd_remainders_left_and_top() raises:
+    var centered = Rect(10, 20, 9, 7).centered(4, 2)
+    assert_true(centered.equals(Rect(12, 22, 4, 2)))
+
+
+def test_rect_centered_clamps_oversized_extents() raises:
+    var area = Rect(10, 20, 4, 3)
+    assert_true(area.centered(20, 30).equals(area))
+
+
+def test_rect_centered_returns_empty_at_empty_origin() raises:
+    assert_true(Rect(10, 20, 0, 7).centered(4, 3).equals(Rect(10, 20, 0, 0)))
+
+
 def test_geometry_translation_saturates_at_integer_boundaries() raises:
     var point = Point(Int.MAX, Int.MIN).translated(1, -1)
     assert_equal(point.x, Int.MAX)
@@ -166,6 +185,44 @@ def test_style_patches_preserve_unspecified_fields_and_compose() raises:
     assert_true(composed.has(Style.BOLD))
     assert_true(composed.has(Style.UNDERLINED))
     assert_false(composed.has(Style.ITALIC))
+
+
+def test_style_shorthand_builders_chain_without_erasing_fields() raises:
+    var foreground = Color.rgb(255, 0, 0)
+    var background = Color.indexed(4)
+    var patch = (
+        StylePatch.plain()
+        .bold()
+        .italic()
+        .dim()
+        .underlined()
+        .reversed()
+        .crossed_out()
+        .fg(foreground)
+        .bg(background)
+    )
+    var resolved_patch = patch.resolved()
+    assert_true(resolved_patch.foreground.equals(foreground))
+    assert_true(resolved_patch.background.equals(background))
+    assert_true(resolved_patch.has(Style.BOLD))
+    assert_true(resolved_patch.has(Style.ITALIC))
+    assert_true(resolved_patch.has(Style.DIM))
+    assert_true(resolved_patch.has(Style.UNDERLINED))
+    assert_true(resolved_patch.has(Style.REVERSED))
+    assert_true(resolved_patch.has(Style.CROSSED_OUT))
+
+    var resolved = (
+        Style.plain()
+        .bold()
+        .italic()
+        .dim()
+        .underlined()
+        .reversed()
+        .crossed_out()
+        .fg(foreground)
+        .bg(background)
+    )
+    assert_true(resolved.equals(resolved_patch))
 
 
 def test_buffer_style_patch_preserves_wide_cell_footprint() raises:

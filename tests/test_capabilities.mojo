@@ -134,5 +134,52 @@ def test_environment_appearance_uses_last_colorfgbg_field() raises:
     assert_false(malformed.equals(light))
 
 
+def test_environment_detects_synchronized_output_implementors() raises:
+    assert_true(
+        terminal_capabilities_from_environment(
+            term_program="WezTerm"
+        ).synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(
+            term_program="iTerm.app"
+        ).synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(
+            term_program="ghostty"
+        ).synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(term_program="rio").synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(term="XTERM-KITTY").synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(
+            term="alacritty-direct"
+        ).synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(term="foot-extra").synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(
+            term="contour-256color"
+        ).synchronized_output
+    )
+
+
+def test_environment_synchronized_output_detection_is_conservative() raises:
+    assert_false(terminal_capabilities_from_environment().synchronized_output)
+    assert_false(
+        terminal_capabilities_from_environment(
+            term_program="wezterm",
+            term="xterm-256color",
+        ).synchronized_output
+    )
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

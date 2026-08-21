@@ -156,6 +156,30 @@ struct Style(Copyable):
     def has(self, modifier: ModifierSet) -> Bool:
         return self.modifiers.contains(modifier)
 
+    def bold(self) -> Self:
+        return self.patched(StylePatch(add_modifiers=Self.BOLD))
+
+    def italic(self) -> Self:
+        return self.patched(StylePatch(add_modifiers=Self.ITALIC))
+
+    def dim(self) -> Self:
+        return self.patched(StylePatch(add_modifiers=Self.DIM))
+
+    def underlined(self) -> Self:
+        return self.patched(StylePatch(add_modifiers=Self.UNDERLINED))
+
+    def reversed(self) -> Self:
+        return self.patched(StylePatch(add_modifiers=Self.REVERSED))
+
+    def crossed_out(self) -> Self:
+        return self.patched(StylePatch(add_modifiers=Self.CROSSED_OUT))
+
+    def fg(self, color: Color) -> Self:
+        return self.patched(StylePatch(foreground=color))
+
+    def bg(self, color: Color) -> Self:
+        return self.patched(StylePatch(background=color))
+
     def patched(self, patch: StylePatch) -> Self:
         """Resolve one patch over this style without erasing unspecified fields."""
         var result = self.copy()
@@ -208,6 +232,30 @@ struct StylePatch(Copyable):
     @staticmethod
     def plain() -> Self:
         return Self()
+
+    def bold(self) -> Self:
+        return self.then(Self(add_modifiers=ModifierSet.BOLD))
+
+    def italic(self) -> Self:
+        return self.then(Self(add_modifiers=ModifierSet.ITALIC))
+
+    def dim(self) -> Self:
+        return self.then(Self(add_modifiers=ModifierSet.DIM))
+
+    def underlined(self) -> Self:
+        return self.then(Self(add_modifiers=ModifierSet.UNDERLINED))
+
+    def reversed(self) -> Self:
+        return self.then(Self(add_modifiers=ModifierSet.REVERSED))
+
+    def crossed_out(self) -> Self:
+        return self.then(Self(add_modifiers=ModifierSet.CROSSED_OUT))
+
+    def fg(self, color: Color) -> Self:
+        return self.then(Self(foreground=color))
+
+    def bg(self, color: Color) -> Self:
+        return self.then(Self(background=color))
 
     @staticmethod
     def from_style(style: Style) -> Self:

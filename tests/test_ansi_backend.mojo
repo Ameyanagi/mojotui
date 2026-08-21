@@ -47,7 +47,13 @@ def read_exact(mut pipe: Pipe, count: Int) raises -> String:
 def test_ansi_backend_clears_once_then_emits_diffs() raises:
     var pipe = Pipe()
     var output_descriptor = pipe.fd_out.value().value
-    var terminal = Terminal(AnsiBackend(Rect(0, 0, 2, 1), output_descriptor))
+    var terminal = Terminal(
+        AnsiBackend(
+            Rect(0, 0, 2, 1),
+            output_descriptor,
+            capabilities=TerminalCapabilities.conservative(),
+        )
+    )
 
     var first = terminal.begin_frame()
     _ = first.buffer.set_cell({0, 0}, Cell("a"))
@@ -67,7 +73,13 @@ def test_ansi_backend_clears_once_then_emits_diffs() raises:
 def test_ansi_backend_writes_initial_clear_for_blank_frame() raises:
     var pipe = Pipe()
     var output_descriptor = pipe.fd_out.value().value
-    var terminal = Terminal(AnsiBackend(Rect(0, 0, 1, 1), output_descriptor))
+    var terminal = Terminal(
+        AnsiBackend(
+            Rect(0, 0, 1, 1),
+            output_descriptor,
+            capabilities=TerminalCapabilities.conservative(),
+        )
+    )
     var frame = terminal.begin_frame()
     _ = terminal.finish_frame(frame^)
     assert_equal(read_exact(pipe, 7), "\x1b[2J\x1b[H")
@@ -75,10 +87,53 @@ def test_ansi_backend_writes_initial_clear_for_blank_frame() raises:
     assert_equal(pipe.fd_out.value().value, output_descriptor)
 
 
+def test_ansi_backend_brackets_synchronized_presentations() raises:
+    var pipe = Pipe()
+    var output_descriptor = pipe.fd_out.value().value
+    var capabilities = TerminalCapabilities(synchronized_output=True)
+    var terminal = Terminal(
+        AnsiBackend(
+            Rect(0, 0, 1, 1),
+            output_descriptor,
+            capabilities=capabilities,
+        )
+    )
+    var frame = terminal.begin_frame()
+    _ = frame.buffer.set_cell({0, 0}, Cell("a"))
+    _ = terminal.finish_frame(frame^)
+    assert_equal(
+        read_exact(pipe, 34),
+        "\x1b[?2026h\x1b[2J\x1b[H\x1b[0m\x1b[1;1Ha\x1b[?2026l",
+    )
+
+
+def test_ansi_backend_omits_synchronized_output_by_default() raises:
+    var pipe = Pipe()
+    var output_descriptor = pipe.fd_out.value().value
+    var capabilities = TerminalCapabilities()
+    var terminal = Terminal(
+        AnsiBackend(
+            Rect(0, 0, 1, 1),
+            output_descriptor,
+            capabilities=capabilities,
+        )
+    )
+    var frame = terminal.begin_frame()
+    _ = frame.buffer.set_cell({0, 0}, Cell("a"))
+    _ = terminal.finish_frame(frame^)
+    assert_equal(read_exact(pipe, 18), "\x1b[2J\x1b[H\x1b[0m\x1b[1;1Ha")
+
+
 def test_ansi_backend_applies_visible_and_hidden_cursor_intent() raises:
     var pipe = Pipe()
     var output_descriptor = pipe.fd_out.value().value
-    var terminal = Terminal(AnsiBackend(Rect(0, 0, 2, 1), output_descriptor))
+    var terminal = Terminal(
+        AnsiBackend(
+            Rect(0, 0, 2, 1),
+            output_descriptor,
+            capabilities=TerminalCapabilities.conservative(),
+        )
+    )
     var visible = terminal.begin_frame()
     visible.set_cursor_position({1, 0})
     var completed = terminal.finish_frame(visible^)
@@ -94,7 +149,14 @@ def test_ansi_backend_applies_visible_and_hidden_cursor_intent() raises:
 def test_inline_backend_reserves_once_and_emits_relative_diffs() raises:
     var pipe = Pipe()
     var output_descriptor = pipe.fd_out.value().value
-    var terminal = Terminal(InlineBackend(2, 1, output_descriptor))
+    var terminal = Terminal(
+        InlineBackend(
+            2,
+            1,
+            output_descriptor,
+            capabilities=TerminalCapabilities.conservative(),
+        )
+    )
     var first = terminal.begin_frame()
     _ = first.buffer.set_cell({0, 0}, Cell("a"))
     _ = terminal.finish_frame(first^)
@@ -116,7 +178,14 @@ def test_inline_backend_reserves_once_and_emits_relative_diffs() raises:
 def test_inline_backend_returns_to_anchor_when_hiding_cursor() raises:
     var pipe = Pipe()
     var output_descriptor = pipe.fd_out.value().value
-    var terminal = Terminal(InlineBackend(2, 1, output_descriptor))
+    var terminal = Terminal(
+        InlineBackend(
+            2,
+            1,
+            output_descriptor,
+            capabilities=TerminalCapabilities.conservative(),
+        )
+    )
     var visible = terminal.begin_frame()
     visible.set_cursor_position({1, 0})
     _ = terminal.finish_frame(visible^)
@@ -133,7 +202,14 @@ def test_inline_backend_returns_to_anchor_when_hiding_cursor() raises:
 def test_inline_backend_follows_width_but_keeps_fixed_height_on_resize() raises:
     var pipe = Pipe()
     var output_descriptor = pipe.fd_out.value().value
-    var terminal = Terminal(InlineBackend(2, 3, output_descriptor))
+    var terminal = Terminal(
+        InlineBackend(
+            2,
+            3,
+            output_descriptor,
+            capabilities=TerminalCapabilities.conservative(),
+        )
+    )
     terminal.handle_resize(Size(7, 40))
     assert_true(terminal.viewport().equals(Rect(0, 0, 7, 3)))
 
@@ -144,7 +220,14 @@ def test_inline_backend_follows_width_but_keeps_fixed_height_on_resize() raises:
 def test_inline_resize_retains_cursor_anchor_state() raises:
     var pipe = Pipe()
     var output_descriptor = pipe.fd_out.value().value
-    var terminal = Terminal(InlineBackend(2, 1, output_descriptor))
+    var terminal = Terminal(
+        InlineBackend(
+            2,
+            1,
+            output_descriptor,
+            capabilities=TerminalCapabilities.conservative(),
+        )
+    )
     var visible = terminal.begin_frame()
     visible.set_cursor_position({1, 0})
     _ = terminal.finish_frame(visible^)
@@ -189,6 +272,7 @@ def test_backends_expose_explicit_terminal_capabilities() raises:
 def test_headless_capabilities_have_a_stable_conservative_default() raises:
     var terminal = Terminal(HeadlessBackend(Rect(0, 0, 1, 1)))
     assert_true(terminal.capabilities().equals(TerminalCapabilities.conservative()))
+    assert_false(terminal.capabilities().synchronized_output)
 
 
 def test_custom_backend_inherits_conservative_capabilities() raises:

@@ -40,6 +40,44 @@ def test_line_style_patch_preserves_individual_span_foregrounds() raises:
     assert_true(patched.spans[1].resolved_style().has(Style.UNDERLINED))
 
 
+def test_span_and_line_style_shorthand_builders_chain() raises:
+    var foreground = Color.rgb(255, 0, 0)
+    var background = Color.indexed(4)
+    var span = (
+        Span.raw("hot")
+        .bold()
+        .italic()
+        .dim()
+        .underlined()
+        .reversed()
+        .crossed_out()
+        .fg(foreground)
+        .bg(background)
+    )
+    var span_style = span.resolved_style()
+    assert_true(span_style.foreground.equals(foreground))
+    assert_true(span_style.background.equals(background))
+    assert_true(span_style.has(Style.BOLD))
+    assert_true(span_style.has(Style.ITALIC))
+    assert_true(span_style.has(Style.DIM))
+    assert_true(span_style.has(Style.UNDERLINED))
+    assert_true(span_style.has(Style.REVERSED))
+    assert_true(span_style.has(Style.CROSSED_OUT))
+
+    var line = (
+        Line.raw("hot")
+        .bold()
+        .italic()
+        .dim()
+        .underlined()
+        .reversed()
+        .crossed_out()
+        .fg(foreground)
+        .bg(background)
+    )
+    assert_true(line.spans[0].resolved_style().equals(span_style))
+
+
 def test_centered_line_renders_wide_continuation_and_style() raises:
     var style = Style(Color.indexed(2), modifiers=Style.BOLD)
     var line = Line.from_text("A界", style, Alignment.CENTER)

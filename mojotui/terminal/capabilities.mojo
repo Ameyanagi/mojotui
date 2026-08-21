@@ -25,6 +25,7 @@ def terminal_capabilities_from_environment(
     colorterm: String = "",
     term: String = "",
     colorfgbg: String = "",
+    term_program: String = "",
 ) -> TerminalCapabilities:
     """Resolve copied environment hints into one deterministic capability.
 
@@ -48,7 +49,17 @@ def terminal_capabilities_from_environment(
     var background = _background_index(colorfgbg)
     if background == 7 or (background >= 9 and background <= 15):
         appearance = TerminalAppearance.LIGHT
-    return TerminalCapabilities(profile, appearance)
+    var synchronized_output = (
+        term_program == "WezTerm"
+        or term_program == "iTerm.app"
+        or term_program == "ghostty"
+        or term_program == "rio"
+        or "kitty" in normalized_term
+        or "alacritty" in normalized_term
+        or "foot" in normalized_term
+        or "contour" in normalized_term
+    )
+    return TerminalCapabilities(profile, appearance, synchronized_output)
 
 
 def detect_terminal_capabilities() -> TerminalCapabilities:
@@ -60,4 +71,5 @@ def detect_terminal_capabilities() -> TerminalCapabilities:
         colorterm=getenv("COLORTERM"),
         term=getenv("TERM"),
         colorfgbg=getenv("COLORFGBG"),
+        term_program=getenv("TERM_PROGRAM"),
     )

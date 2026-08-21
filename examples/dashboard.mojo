@@ -29,6 +29,7 @@ from mojotui import (
     List,
     ListItem,
     ListState,
+    MouseCapture,
     Paragraph,
     ProfiledColor,
     Rect,
@@ -428,7 +429,7 @@ def run_dashboard() raises:
         DashboardApplication(capabilities),
         SystemClock(),
         AnsiBackend.from_terminal(capabilities=capabilities),
-        options=SessionOptions(mouse_capture=True),
+        options=SessionOptions(mouse=MouseCapture.CLICKS),
         tick_interval_ms=100,
     )
     host.run()

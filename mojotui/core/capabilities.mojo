@@ -49,23 +49,26 @@ struct TerminalAppearance(Copyable, Equatable, ImplicitlyCopyable):
 
 
 struct TerminalCapabilities(Copyable, ImplicitlyCopyable):
-    """Explicit color profile and background appearance for one terminal."""
+    """Explicit presentation capabilities for one terminal."""
 
     var profile: ColorProfile
     var appearance: TerminalAppearance
+    var synchronized_output: Bool
 
     def __init__(
         out self,
         profile: ColorProfile = ColorProfile.ANSI16,
         appearance: TerminalAppearance = TerminalAppearance.DARK,
+        synchronized_output: Bool = False,
     ):
         self.profile = profile
         self.appearance = appearance
+        self.synchronized_output = synchronized_output
 
     @staticmethod
     def conservative() -> Self:
         """Return the documented deterministic fallback."""
-        return Self(ColorProfile.ANSI16, TerminalAppearance.DARK)
+        return Self(ColorProfile.ANSI16, TerminalAppearance.DARK, False)
 
     @staticmethod
     def headless() -> Self:
@@ -73,7 +76,11 @@ struct TerminalCapabilities(Copyable, ImplicitlyCopyable):
         return Self.conservative()
 
     def equals(self, other: Self) -> Bool:
-        return self.profile == other.profile and self.appearance == other.appearance
+        return (
+            self.profile == other.profile
+            and self.appearance == other.appearance
+            and self.synchronized_output == other.synchronized_output
+        )
 
 
 def _distance_squared(

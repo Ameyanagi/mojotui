@@ -43,6 +43,95 @@ def test_fragmented_arrow_sequence() raises:
     assert_true(key(second[0].copy()).code == KeyEvent.UP)
 
 
+def test_ss3_function_key_and_arrow_sequences() raises:
+    var parser = InputParser()
+    var function_key = parser.feed(bytes3(0x1B, 0x4F, 0x50))
+    assert_equal(len(function_key), 1)
+    assert_true(key(function_key[0].copy()).code == KeyEvent.F1)
+
+    var arrow = parser.feed(bytes3(0x1B, 0x4F, 0x41))
+    assert_equal(len(arrow), 1)
+    assert_true(key(arrow[0].copy()).code == KeyEvent.UP)
+
+
+def test_fragmented_ss3_sequence() raises:
+    var parser = InputParser()
+    var first = parser.feed(bytes2(0x1B, 0x4F))
+    assert_equal(len(first), 0)
+    assert_equal(parser.pending_byte_count(), 2)
+    var second = parser.feed([UInt8(0x50)])
+    assert_equal(len(second), 1)
+    assert_true(key(second[0].copy()).code == KeyEvent.F1)
+
+
+def test_csi_tilde_function_keys() raises:
+    var parser = InputParser()
+    var first: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x31),
+        UInt8(0x31),
+        UInt8(0x7E),
+    ]
+    var f1 = parser.feed(first^)
+    assert_equal(len(f1), 1)
+    assert_true(key(f1[0].copy()).code == KeyEvent.F1)
+
+    var last: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x32),
+        UInt8(0x34),
+        UInt8(0x7E),
+    ]
+    var f12 = parser.feed(last^)
+    assert_equal(len(f12), 1)
+    assert_true(key(f12[0].copy()).code == KeyEvent.F12)
+
+
+def test_modified_csi_function_keys() raises:
+    var parser = InputParser()
+    var tilde: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x31),
+        UInt8(0x31),
+        UInt8(0x3B),
+        UInt8(0x35),
+        UInt8(0x7E),
+    ]
+    var tilde_events = parser.feed(tilde^)
+    var tilde_key = key(tilde_events[0].copy())
+    assert_true(tilde_key.code == KeyEvent.F1)
+    assert_true(tilde_key.modifiers == KeyEvent.CONTROL)
+
+    var final: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x31),
+        UInt8(0x3B),
+        UInt8(0x35),
+        UInt8(0x50),
+    ]
+    var final_events = parser.feed(final^)
+    var final_key = key(final_events[0].copy())
+    assert_true(final_key.code == KeyEvent.F1)
+    assert_true(final_key.modifiers == KeyEvent.CONTROL)
+
+    var navigation: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x31),
+        UInt8(0x3B),
+        UInt8(0x35),
+        UInt8(0x7E),
+    ]
+    var navigation_events = parser.feed(navigation^)
+    var navigation_key = key(navigation_events[0].copy())
+    assert_true(navigation_key.code == KeyEvent.HOME)
+    assert_true(navigation_key.modifiers == KeyEvent.CONTROL)
+
+
 def test_fragmented_utf8_character() raises:
     var parser = InputParser()
     assert_equal(len(parser.feed(bytes2(0xE7, 0x95))), 0)
@@ -206,6 +295,11 @@ def test_unknown_complete_sequence_is_preserved() raises:
     assert_equal(len(events), 1)
     assert_true(events[0].isa[UnknownEvent]())
     assert_equal(events[0][UnknownEvent].sequence, "\x1b[X")
+
+    var function_like = parser.feed(bytes3(0x1B, 0x5B, 0x50))
+    assert_equal(len(function_like), 1)
+    assert_true(function_like[0].isa[UnknownEvent]())
+    assert_equal(function_like[0][UnknownEvent].sequence, "\x1b[P")
 
 
 def main() raises:

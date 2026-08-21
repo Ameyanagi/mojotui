@@ -66,7 +66,7 @@ The following public values are no longer raw integer tags:
 - `Alignment`
 - `ConstraintKind`, `Direction`, and `Flex`
 - `ScrollbarOrientation`
-- `KeyCode`, `KeyModifiers`, `MouseKind`, and `MouseButton`
+- `KeyCode`, `KeyModifiers`, `MouseKind`, `MouseButton`, and `MouseCapture`
 - `EditorCommandKind`, `ControllerActionKind`, `MarkerAffinity`, `PieceSource`,
   `WrapMode`, and `LineEnding`
 - `ColorKind`, `ColorProfile`, `TerminalAppearance`, `ModifierSet`, and
@@ -190,10 +190,15 @@ var host = TerminalApplicationHost(
     MyApplication(),
     SystemClock(),
     AnsiBackend.from_terminal(),
-    options=SessionOptions(mouse_capture=True),
+    options=SessionOptions(mouse=MouseCapture.MOTION),
 )
 host.run()
 ```
+
+`SessionOptions.mouse_capture: Bool` was replaced by the nominal
+`SessionOptions.mouse: MouseCapture` policy. Choose `MouseCapture.CLICKS`,
+`MouseCapture.DRAG`, or `MouseCapture.MOTION`; the default is
+`MouseCapture.OFF`.
 
 The host owns restoration and adapter shutdown. The adapter still owns and
 executes general background tasks.
@@ -282,8 +287,11 @@ default. Override it when the transport knows the real client profile.
 
 ANSI and inline backend constructors accept an optional typed `capabilities`
 argument. When omitted, they inspect `NO_COLOR`, `COLORTERM`, `TERM`, and
-`COLORFGBG` once during construction. `HeadlessBackend` never reads the
-environment and retains a deterministic default.
+`COLORFGBG`, plus `TERM_PROGRAM` for synchronized-output support, once during
+construction. `HeadlessBackend` never reads the environment and retains a
+deterministic default. Known mode-2026 terminals set
+`TerminalCapabilities.synchronized_output`; ANSI and inline presentations then
+use synchronized-output brackets.
 
 Existing `Style` and `Color` construction remains valid and keeps its explicit
 meaning. Portable themes opt in by resolving before rendering:

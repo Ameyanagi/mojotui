@@ -5,6 +5,23 @@ from std.io import FileDescriptor
 from ..platform import PosixTerminalMode
 
 
+struct MouseCapture(Copyable, Equatable, ImplicitlyCopyable):
+    """Select the terminal mouse events captured during a session."""
+
+    comptime OFF = MouseCapture(_value=0)
+    comptime CLICKS = MouseCapture(_value=1)
+    comptime DRAG = MouseCapture(_value=2)
+    comptime MOTION = MouseCapture(_value=3)
+
+    var _value: Int
+
+    def __init__(out self, *, _value: Int):
+        self._value = _value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
+
+
 struct SessionOptions(Copyable):
     """Terminal features enabled for the duration of a session."""
 
@@ -12,7 +29,7 @@ struct SessionOptions(Copyable):
     var hide_cursor: Bool
     var bracketed_paste: Bool
     var focus_events: Bool
-    var mouse_capture: Bool
+    var mouse: MouseCapture
 
     def __init__(
         out self,
@@ -20,13 +37,13 @@ struct SessionOptions(Copyable):
         hide_cursor: Bool = True,
         bracketed_paste: Bool = True,
         focus_events: Bool = True,
-        mouse_capture: Bool = False,
+        mouse: MouseCapture = MouseCapture.OFF,
     ):
         self.alternate_screen = alternate_screen
         self.hide_cursor = hide_cursor
         self.bracketed_paste = bracketed_paste
         self.focus_events = focus_events
-        self.mouse_capture = mouse_capture
+        self.mouse = mouse
 
 
 def session_enter_sequence(options: SessionOptions) -> String:
@@ -40,7 +57,11 @@ def session_enter_sequence(options: SessionOptions) -> String:
         result += "\x1b[?2004h"
     if options.focus_events:
         result += "\x1b[?1004h"
-    if options.mouse_capture:
+    if options.mouse == MouseCapture.CLICKS:
+        result += "\x1b[?1000h\x1b[?1006h"
+    elif options.mouse == MouseCapture.DRAG:
+        result += "\x1b[?1002h\x1b[?1006h"
+    elif options.mouse == MouseCapture.MOTION:
         result += "\x1b[?1003h\x1b[?1006h"
     return result^
 
@@ -48,7 +69,11 @@ def session_enter_sequence(options: SessionOptions) -> String:
 def session_leave_sequence(options: SessionOptions) -> String:
     """Build the reverse sequence, leaving style and cursor in safe defaults."""
     var result = String("\x1b[0m")
-    if options.mouse_capture:
+    if options.mouse == MouseCapture.CLICKS:
+        result += "\x1b[?1006l\x1b[?1000l"
+    elif options.mouse == MouseCapture.DRAG:
+        result += "\x1b[?1006l\x1b[?1002l"
+    elif options.mouse == MouseCapture.MOTION:
         result += "\x1b[?1006l\x1b[?1003l"
     if options.focus_events:
         result += "\x1b[?1004l"
