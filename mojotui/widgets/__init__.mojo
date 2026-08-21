@@ -20,6 +20,7 @@ from .collection import (
     TableSelection,
     TableState,
 )
+from .chart import Axis, Chart, Dataset, GraphKind, Marker
 from .data import BarChart, Gauge, LineGauge, Ratio, Sparkline
 from .navigation import (
     Scrollbar,

@@ -28,6 +28,8 @@ def test_dashboard_composes_widgets_in_one_deterministic_frame() raises:
     assert_true("Overview" in row(buffer, 1))
     assert_true(row(buffer, 3).startswith("┌ CPU "))
     assert_true(row(buffer, 9).startswith("┌ Processes "))
+    assert_true("CPU trend" in row(buffer, 9))
+    assert_true("Activity" in row(buffer, 17))
     assert_true("q quit" in row(buffer, 21))
 
 
