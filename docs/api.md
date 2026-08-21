@@ -22,6 +22,16 @@ application wants narrower imports.
 | Editor data | `Document`, `SelectionSet`, `EditorEngine`, `EditorCommand`, `EditorCommandKind`, `ControllerActionKind`, `WrapMode`, `LineEnding` |
 | Editor services | `LocalFileService`, `Clipboard`, `MemoryClipboard`, `Osc52Clipboard` |
 
+## List container alias
+
+The widget `List` shares its name with `std.collections.List`. When both are
+needed, alias the standard library container at import, as
+`examples/dashboard.mojo` does:
+
+```mojo
+from std.collections import List as MojoList
+```
+
 Functions that can fail declare `raises`. The compiler checks trait constraints
 and concrete associated types before execution. Semantic choices use nominal
 values such as `Alignment`, `Direction`, `Flex`, `ScrollbarOrientation`,

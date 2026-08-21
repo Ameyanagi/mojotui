@@ -19,9 +19,11 @@ editor = { cmd = "mojo run -I . examples/editor.mojo", description = "Run the in
 format = { cmd = "bash scripts/format.sh", description = "Format Mojo source files in place" }
 fuzzy = { cmd = "mojo run -I . examples/fuzzy.mojo", description = "Run the interactive fuzzy-picker example" }
 format-check = { cmd = "bash scripts/check-format.sh", description = "Verify Mojo formatting without modifying source files" }
-lint = { depends-on = ["format-check", "type-check", "unsafe-check"], description = "Run formatting, strict-type, and unsafe-boundary checks" }
+hello-loop = { cmd = "mojo run -I . examples/hello_loop.mojo", description = "Run the manual-event-loop hello example" }
+lint = { depends-on = ["format-check", "readme-check", "type-check", "unsafe-check"], description = "Run formatting, README, strict-type, and unsafe-boundary checks" }
 package = { cmd = "rattler-build build --recipe conda.recipe/recipe.yaml -c https://ameyanagi.github.io/mojo-channel -c conda-forge -c https://conda.modular.com/max -c https://repo.prefix.dev/modular-community", description = "Build the local Conda package" }
 precompile = { cmd = "mojo precompile mojotui -o .pixi/mojotui-check.mojoc", description = "Precompile the mojotui package" }
+readme-check = { cmd = "bash scripts/check-readme.sh", description = "Compile the README's fenced Mojo blocks exactly as pasted" }
 test = { cmd = "bash scripts/test.sh", description = "Run all Mojo TestSuite files" }
 type-check = { depends-on = ["type-policy-check", "compiler-lint"], description = "Enforce static API policy and compile with warnings as errors" }
 type-policy-check = { cmd = "bash scripts/check-types.sh", description = "Reject obsolete declarations and dynamic escape-hatch types" }
