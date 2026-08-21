@@ -14,12 +14,16 @@ from mojotui import (
     Alignment,
     AnsiBackend,
     Application,
+    Axis,
     Block,
     Buffer,
+    Chart,
     Color,
     Command,
     Constraint,
+    Dataset,
     Gauge,
+    GraphKind,
     InitResult,
     InputEvent,
     KeyEvent,
@@ -29,6 +33,7 @@ from mojotui import (
     List,
     ListItem,
     ListState,
+    Marker,
     MouseCapture,
     Paragraph,
     ProfiledColor,
@@ -161,6 +166,23 @@ def process_rows(model: DashboardModel) -> MojoList[Row]:
     ]
 
 
+def cpu_history_dataset(model: DashboardModel) raises -> Dataset:
+    """Copy the rolling sparkline samples into numeric chart coordinates."""
+    var xs = MojoList[Float64](capacity=len(model.cpu_history))
+    var ys = MojoList[Float64](capacity=len(model.cpu_history))
+    for index in range(len(model.cpu_history)):
+        xs.append(Float64(index))
+        ys.append(Float64(model.cpu_history[index]))
+    return Dataset(
+        xs,
+        ys,
+        name="CPU",
+        kind=GraphKind.LINE,
+        marker=Marker.BRAILLE,
+        style=accent_style(model),
+    )
+
+
 def render_metric_blocks(model: DashboardModel, area: Rect, mut buffer: Buffer) raises:
     var columns = Layout.horizontal(
         [Constraint.fill(), Constraint.fill(), Constraint.fill()], spacing=1
@@ -257,6 +279,23 @@ def render_activity_log(mut model: DashboardModel, area: Rect, mut buffer: Buffe
     list.render(inner, buffer, model.logs)
 
 
+def render_cpu_chart(model: DashboardModel, area: Rect, mut buffer: Buffer) raises:
+    var block = Block.bordered(Line.from_text(" CPU trend "), padding_x=1)
+    block.render(area, buffer)
+    var inner = block.inner(area)
+    if inner.is_empty():
+        return
+
+    var x_labels: MojoList[String] = ["0", "30", "60"]
+    var y_labels: MojoList[String] = ["0", "100"]
+    var datasets: MojoList[Dataset] = [cpu_history_dataset(model)]
+    Chart(
+        datasets^,
+        Axis(0.0, 63.0, labels=x_labels),
+        Axis(0.0, 100.0, labels=y_labels),
+    ).render(inner, buffer)
+
+
 def render_dashboard(mut model: DashboardModel, area: Rect, mut buffer: Buffer) raises:
     """Render one dashboard frame without I/O or hidden global state."""
     if area.width < 40 or area.height < 14:
@@ -301,7 +340,15 @@ def render_dashboard(mut model: DashboardModel, area: Rect, mut buffer: Buffer) 
     ).split(regions[2])
     if len(body) == 2:
         render_process_table(model, body[0], buffer)
-        render_activity_log(model, body[1], buffer)
+        if body[1].height >= 10:
+            var side = Layout.vertical(
+                [Constraint.fill(2), Constraint.fill()], spacing=1
+            ).split(body[1])
+            if len(side) == 2:
+                render_cpu_chart(model, side[0], buffer)
+                render_activity_log(model, side[1], buffer)
+        else:
+            render_activity_log(model, body[1], buffer)
 
     Paragraph(
         Text.from_line(

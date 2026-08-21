@@ -8,7 +8,7 @@ application wants narrower imports.
 | Geometry and layout | `Point`, `Size`, `Rect`, `Margin`, `Constraint`, `ConstraintKind`, `Direction`, `Layout`, `Flex` |
 | Cells and styling | `Cell`, `Color`, `ColorKind`, `ColorProfile`, `TerminalAppearance`, `TerminalCapabilities`, `ProfiledColor`, `AdaptiveColor`, `ModifierSet`, `Style`, `StylePatch`, `Buffer`, `BufferWrite`, `BufferDifference` |
 | Rich text | `Span`, `Line`, `Text`, `render_line`, `render_text`; all three values implement `Widget` |
-| Stateless widgets | `Block`, `BorderType`, `Padding`, `TitlePosition`, `Paragraph`, `Fill`, `Ratio`, `Gauge`, `LineGauge`, `Sparkline`, `BarChart`, `Tabs`, `Clear` |
+| Stateless widgets | `Block`, `BorderType`, `Padding`, `TitlePosition`, `Paragraph`, `Fill`, `Ratio`, `Gauge`, `LineGauge`, `Sparkline`, `BarChart`, `Chart`, `Axis`, `Dataset`, `GraphKind`, `Marker`, `Tabs`, `Clear` |
 | Stateful widgets | `List`, `HighlightSpacing`, `Table`, `TableSelection`, `Scrollbar`, `ScrollbarSymbols`, `Editor`, `TextInput`, `TextArea` and their state types |
 | Render transactions | `Frame`, `CompletedFrame`, `Terminal` |
 | Terminal output | `FramePatch`, `AnsiBackend`, `InlineBackend`, `HeadlessBackend`, `detect_terminal_capabilities`, `terminal_capabilities_from_environment` |
