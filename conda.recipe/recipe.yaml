@@ -11,15 +11,18 @@ source:
 build:
   number: 0
   script:
-    - mojo precompile mojotui -o ${{ PREFIX }}/lib/mojo/mojotui.mojoc
+    - mojo precompile -I ${{ PREFIX }}/lib/mojo mojotui -o ${{ PREFIX }}/lib/mojo/mojotui.mojoc
 
 requirements:
   build:
     - mojo-compiler =1.0.0
+    - mojo-moji
   host:
     - mojo-compiler =1.0.0
+    - mojo-moji
   run:
     - ${{ pin_compatible('mojo-compiler') }}
+    - mojo-moji
 
 tests:
   - script:
