@@ -25,6 +25,7 @@ environments:
     - url: https://conda.anaconda.org/conda-forge/
     packages:
       linux-64:
+      - conda: https://ameyanagi.github.io/mojo-channel/linux-64/mojo-moji-0.0.0-hb0f4dca_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/bzip2-1.0.8-hda65f42_10.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/icu-78.3-py310h44b86e0_2.conda
@@ -79,6 +80,7 @@ environments:
       - conda: https://conda.modular.com/max/noarch/mblack-26.5.0-release.conda
       - conda: https://conda.modular.com/max/noarch/mojo-python-1.0.0-release.conda
       linux-aarch64:
+      - conda: https://ameyanagi.github.io/mojo-channel/linux-aarch64/mojo-moji-0.0.0-he8cfe8b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/_openmp_mutex-4.5-20_gnu.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/bzip2-1.0.8-h4777abc_10.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/icu-78.3-py311h3512406_2.conda
@@ -181,6 +183,22 @@ environments:
       - conda: https://conda.modular.com/max/osx-arm64/mojo-1.0.0-release.conda
       - conda: https://conda.modular.com/max/osx-arm64/mojo-compiler-1.0.0-release.conda
 packages:
+- conda: https://ameyanagi.github.io/mojo-channel/linux-64/mojo-moji-0.0.0-hb0f4dca_0.conda
+  sha256: 7ff1401642469b20b09802a443ba264fb80852e306648368ad1818dc94402910
+  md5: a99bf43828d64c35f107960e71547f15
+  depends:
+  - mojo-compiler >=1.0.0,<2.0a0
+  license: MIT OR Apache-2.0
+  size: 219370
+  timestamp: 1787303699341
+- conda: https://ameyanagi.github.io/mojo-channel/linux-aarch64/mojo-moji-0.0.0-he8cfe8b_0.conda
+  sha256: 0315c21f39dd737887c0cd2acbc2327bb774d399939c1555b1e39c182f2cac45
+  md5: b3c066e8701fae057a737f92c638ef2a
+  depends:
+  - mojo-compiler >=1.0.0,<2.0a0
+  license: MIT OR Apache-2.0
+  size: 219348
+  timestamp: 1787303698699
 - conda: https://ameyanagi.github.io/mojo-channel/osx-arm64/mojo-moji-0.0.0-h60d57d3_0.conda
   sha256: f58e29eb2383ebbbbd54d299d1129a442ec21b5b5cafb6462b999cafa77d2fa4
   md5: 027d427ed0534f2916cbd6478e416d56
