@@ -28,11 +28,10 @@ type-policy-check = { cmd = "bash scripts/check-types.sh", description = "Reject
 unsafe-check = { cmd = "bash scripts/check-unsafe.sh", description = "Reject unsafe or FFI operations outside the platform boundary" }
 
 [dependencies]
+mojo-moji = "*"
 mojo = "==1.0.0"
 rattler-build = ">=0.74,<0.75"
 ripgrep = ">=14,<16"
 
 # mojo-moji is built locally from ~/dev/moji (file:// channel above); only an
 # osx-arm64 build exists until moji publishes to a shared channel.
-[target.osx-arm64.dependencies]
-mojo-moji = "*"
