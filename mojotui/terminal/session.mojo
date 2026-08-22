@@ -2,7 +2,7 @@
 
 from std.io import FileDescriptor
 
-from ..platform import PosixTerminalMode
+from ..platform import PosixTerminalMode, write_terminal_control
 
 
 struct MouseCapture(Copyable, Equatable, ImplicitlyCopyable):
@@ -129,20 +129,46 @@ struct TerminalSession(Movable):
         self.options = options.copy()
         self.mode = PosixTerminalMode(input_descriptor)
         self.active = True
-        var output = FileDescriptor(output_descriptor)
-        output.write_string(session_enter_sequence(options))
+        try:
+            write_terminal_control(output_descriptor, session_enter_sequence(options))
+        except error:
+            # The transport may have accepted a prefix. Undo presentation and
+            # raw mode independently before surfacing the original failure.
+            try:
+                write_terminal_control(
+                    output_descriptor, session_leave_sequence(options)
+                )
+            except:
+                pass
+            self.mode.restore_silently()
+            self.active = False
+            raise error
 
     def close(mut self) raises:
         """Restore presentation and input state; repeated calls are harmless."""
         if not self.active:
             return
-        self.mode.restore()
-        var output = FileDescriptor(self.output_descriptor)
-        output.write_string(session_leave_sequence(self.options))
         self.active = False
+        try:
+            self.mode.restore()
+        except error:
+            try:
+                write_terminal_control(
+                    self.output_descriptor, session_leave_sequence(self.options)
+                )
+            except:
+                pass
+            raise error
+        write_terminal_control(
+            self.output_descriptor, session_leave_sequence(self.options)
+        )
 
     def __deinit__(deinit self):
         if self.active:
             self.mode.restore_silently()
-            var output = FileDescriptor(self.output_descriptor)
-            output.write_string(session_leave_sequence(self.options))
+            try:
+                write_terminal_control(
+                    self.output_descriptor, session_leave_sequence(self.options)
+                )
+            except:
+                pass

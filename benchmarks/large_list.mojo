@@ -46,7 +46,7 @@ struct HighlightedRowProvider(Copyable, ListLineProvider):
     var count: Int
     var patch: StylePatch
 
-    def __init__(out self, count: Int = _ROW_COUNT):
+    def __init__(out self, count: Int = _ROW_COUNT) raises:
         self.count = count
         self.patch = StylePatch(
             foreground=Color.indexed(6),

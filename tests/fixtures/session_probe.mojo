@@ -1,10 +1,12 @@
 """PTY child used by the terminal lifecycle integration tests."""
 
 from std.collections import List, Optional
+from std.io import FileDescriptor
 from std.sys import argv
 
 from mojotui import (
     Application,
+    Backend,
     Buffer,
     Cell,
     Command,
@@ -17,6 +19,7 @@ from mojotui import (
     MouseCapture,
     PosixReactor,
     Rect,
+    FramePatch,
     RuntimeAdapter,
     SessionOptions,
     Subscription,
@@ -24,6 +27,28 @@ from mojotui import (
     TerminalSession,
     UpdateResult,
 )
+
+
+struct BlockingFailBackend(Backend):
+    """Wait until the PTY observes raw mode, then fail host construction."""
+
+    def __init__(out self):
+        pass
+
+    def viewport(mut self) raises -> Rect:
+        var storage = List[UInt8](length=1, fill=0)
+        var input = FileDescriptor(0)
+        _ = input.read_bytes(storage)
+        raise Error("intentional backend initialization failure")
+
+    def present(mut self, patch: FramePatch) raises:
+        pass
+
+    def clear(mut self) raises:
+        pass
+
+    def flush(mut self) raises:
+        pass
 
 
 struct HostProbeApplication(Application, Copyable):
@@ -218,6 +243,34 @@ def split_descriptor_resize_exit() raises:
     raise Error("split-descriptor inline resize was not observed")
 
 
+def overlapping_session_exit() raises:
+    var session = TerminalSession(options=test_options())
+    try:
+        var overlapping = TerminalSession(options=test_options())
+        overlapping.close()
+    except error:
+        if "already in raw mode" not in String(error):
+            raise Error("overlapping session failed for an unexpected reason: ", error)
+        print("READY", flush=True)
+        var reactor = PosixReactor()
+        wait_for_input(reactor)
+        session.close()
+        return
+    raise Error("overlapping terminal session unexpectedly acquired the same TTY")
+
+
+def host_initialization_failure() raises:
+    print("READY", flush=True)
+    var host = TerminalApplicationHost(
+        HostProbeAdapter(),
+        HostProbeApplication(),
+        ManualClock(),
+        BlockingFailBackend(),
+        options=test_options(),
+    )
+    _ = host.closed
+
+
 def main() raises:
     var args = argv()
     var mode = String(args[1]) if len(args) > 1 else String("normal")
@@ -235,5 +288,9 @@ def main() raises:
         hosted_exit()
     elif mode == "split-descriptors":
         split_descriptor_resize_exit()
+    elif mode == "overlap":
+        overlapping_session_exit()
+    elif mode == "host-init-error":
+        host_initialization_failure()
     else:
         raise Error("unknown lifecycle probe mode")

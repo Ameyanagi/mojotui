@@ -456,7 +456,10 @@ struct TerminalApplicationHost[
         if observation.input_ready and can_read_input:
             self._handle_events(self.reactor.read_events(self.parser))
             self._refresh_escape_deadline(now_ns)
-        if self.schedule.escape_due(now_ns):
+        if observation.hangup:
+            self._handle_events(self.parser.finish())
+            self.schedule.clear_escape()
+        elif self.schedule.escape_due(now_ns):
             self._handle_events(self.parser.flush_escape())
             self.schedule.clear_escape()
             self._refresh_escape_deadline(now_ns)

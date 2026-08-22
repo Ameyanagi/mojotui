@@ -1,15 +1,23 @@
 from std.collections import List
 from std.os import Pipe
-from std.testing import TestSuite, assert_equal, assert_false, assert_true
+from std.testing import (
+    TestSuite,
+    assert_equal,
+    assert_false,
+    assert_raises,
+    assert_true,
+)
 
 from mojotui import (
     AnsiBackend,
     Backend,
     Cell,
+    CellChange,
     ColorProfile,
     FramePatch,
     HeadlessBackend,
     InlineBackend,
+    Point,
     Rect,
     Size,
     Terminal,
@@ -278,6 +286,28 @@ def test_headless_capabilities_have_a_stable_conservative_default() raises:
 def test_custom_backend_inherits_conservative_capabilities() raises:
     var terminal = Terminal(DefaultCapabilityBackend(Rect(0, 0, 1, 1)))
     assert_true(terminal.capabilities().equals(TerminalCapabilities.conservative()))
+
+
+def test_frame_patch_rejects_malformed_change_topology() raises:
+    var area = Rect(0, 0, 3, 1)
+    var outside: List[CellChange] = [CellChange(Point(3, 0), Cell("x"))]
+    with assert_raises(contains="out-of-area cell change"):
+        FramePatch(area, outside^).validate()
+
+    var unordered: List[CellChange] = [
+        CellChange(Point(1, 0), Cell("b")),
+        CellChange(Point(0, 0), Cell("a")),
+    ]
+    with assert_raises(contains="unique and row-major"):
+        FramePatch(area, unordered^).validate()
+
+    var wide = Cell.from_grapheme("界")
+    var overlap: List[CellChange] = [
+        CellChange(Point(0, 0), wide),
+        CellChange(Point(1, 0), Cell("x")),
+    ]
+    with assert_raises(contains="overlaps a preceding wide cell"):
+        FramePatch(area, overlap^).validate()
 
 
 def main() raises:

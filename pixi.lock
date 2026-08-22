@@ -25,7 +25,7 @@ environments:
     - url: https://conda.anaconda.org/conda-forge/
     packages:
       linux-64:
-      - conda: https://ameyanagi.github.io/mojo-channel/linux-64/mojo-moji-0.0.0-hb0f4dca_0.conda
+      - conda: https://ameyanagi.github.io/mojo-channel/linux-64/mojo-moji-0.1.0-hb0f4dca_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/bzip2-1.0.8-hda65f42_10.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/icu-78.3-py310h44b86e0_2.conda
@@ -80,7 +80,7 @@ environments:
       - conda: https://conda.modular.com/max/noarch/mblack-26.5.0-release.conda
       - conda: https://conda.modular.com/max/noarch/mojo-python-1.0.0-release.conda
       linux-aarch64:
-      - conda: https://ameyanagi.github.io/mojo-channel/linux-aarch64/mojo-moji-0.0.0-he8cfe8b_0.conda
+      - conda: https://ameyanagi.github.io/mojo-channel/linux-aarch64/mojo-moji-0.1.0-he8cfe8b_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/_openmp_mutex-4.5-20_gnu.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/bzip2-1.0.8-h4777abc_10.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/icu-78.3-py311h3512406_2.conda
@@ -135,7 +135,7 @@ environments:
       - conda: https://conda.modular.com/max/noarch/mblack-26.5.0-release.conda
       - conda: https://conda.modular.com/max/noarch/mojo-python-1.0.0-release.conda
       osx-arm64:
-      - conda: https://ameyanagi.github.io/mojo-channel/osx-arm64/mojo-moji-0.0.0-h60d57d3_0.conda
+      - conda: https://ameyanagi.github.io/mojo-channel/osx-arm64/mojo-moji-0.1.0-h60d57d3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-hbd8a1cb_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/click-8.4.2-pyhc90fa1f_0.conda
@@ -183,30 +183,30 @@ environments:
       - conda: https://conda.modular.com/max/osx-arm64/mojo-1.0.0-release.conda
       - conda: https://conda.modular.com/max/osx-arm64/mojo-compiler-1.0.0-release.conda
 packages:
-- conda: https://ameyanagi.github.io/mojo-channel/linux-64/mojo-moji-0.0.0-hb0f4dca_0.conda
-  sha256: 7ff1401642469b20b09802a443ba264fb80852e306648368ad1818dc94402910
-  md5: a99bf43828d64c35f107960e71547f15
+- conda: https://ameyanagi.github.io/mojo-channel/linux-64/mojo-moji-0.1.0-hb0f4dca_0.conda
+  sha256: ffc40e94b226edfe77ebb013f23e4cd446b99f263e8ac2fb16e9830e6265254f
+  md5: 232ca078a9b8dca39260b66220cfae97
   depends:
-  - mojo-compiler >=1.0.0,<2.0a0
+  - mojo-compiler ==1.0.0
   license: MIT OR Apache-2.0
-  size: 219370
-  timestamp: 1787303699341
-- conda: https://ameyanagi.github.io/mojo-channel/linux-aarch64/mojo-moji-0.0.0-he8cfe8b_0.conda
-  sha256: 0315c21f39dd737887c0cd2acbc2327bb774d399939c1555b1e39c182f2cac45
-  md5: b3c066e8701fae057a737f92c638ef2a
+  size: 269133
+  timestamp: 1787370936664
+- conda: https://ameyanagi.github.io/mojo-channel/linux-aarch64/mojo-moji-0.1.0-he8cfe8b_0.conda
+  sha256: 4dc2ce723787ff8318edc1b91014b1c7f9ae11460428a79daece8d5a52265a06
+  md5: 26e89295aa584683bc6874c62ca5d376
   depends:
-  - mojo-compiler >=1.0.0,<2.0a0
+  - mojo-compiler ==1.0.0
   license: MIT OR Apache-2.0
-  size: 219348
-  timestamp: 1787303698699
-- conda: https://ameyanagi.github.io/mojo-channel/osx-arm64/mojo-moji-0.0.0-h60d57d3_0.conda
-  sha256: 2551ba7a9dcffd22014e06bfdcbd018810b11ad5e3341f68c9d9eb4fd6f26196
-  md5: ea92376f1ed7f191dfbfd3f131de7703
+  size: 269125
+  timestamp: 1787370935034
+- conda: https://ameyanagi.github.io/mojo-channel/osx-arm64/mojo-moji-0.1.0-h60d57d3_0.conda
+  sha256: 491f6855d3bd52d533e9c463f1e0bb7ea2be2e4a7e1f1f4f13c7787b4230830b
+  md5: c2bfcca59d1fad723d597567e9188bfb
   depends:
-  - mojo-compiler >=1.0.0,<2.0a0
+  - mojo-compiler ==1.0.0
   license: MIT OR Apache-2.0
-  size: 218423
-  timestamp: 1787303701060
+  size: 268221
+  timestamp: 1787370901758
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
   build_number: 20
   sha256: 1dd3fffd892081df9726d7eb7e0dea6198962ba775bd88842135a4ddb4deb3c9

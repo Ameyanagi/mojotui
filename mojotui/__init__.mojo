@@ -73,6 +73,7 @@ from .core import (
 from .event import (
     FocusEvent,
     InputEvent,
+    InputLimits,
     InputParser,
     KeyCode,
     KeyEvent,

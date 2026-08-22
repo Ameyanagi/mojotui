@@ -10,6 +10,8 @@ pixi run bench
 pixi run bench-editor
 pixi run bench-collections
 pixi run bench-large-list
+pixi run profile-render-build
+pixi run profile-large-list-build
 ```
 
 When reporting results, record:
@@ -45,7 +47,7 @@ suite also contains long-running modes for an operating-system sampling
 profiler:
 
 ```bash
-pixi run mojo build -I . benchmarks/large_list.mojo -o .pixi/large-list-profile
+pixi run profile-large-list-build
 .pixi/large-list-profile profile-eager &
 sample $! 7 -file /tmp/mojotui-eager-profile.txt
 
@@ -53,20 +55,26 @@ sample $! 7 -file /tmp/mojotui-eager-profile.txt
 sample $! 7 -file /tmp/mojotui-virtual-profile.txt
 ```
 
-On an Apple M4 running macOS 26.5.1 on 2026-08-22, the eager profile attributed
-2,797 of 5,614 steady-state main-thread samples (49.8%) to constructing all rows. Allocation
-and `Line.highlighted` were the two largest resolved children, and peak physical
-footprint was 41.4 MiB. The lazy profile had no eager construction phase and a
-6.6 MiB peak footprint; its remaining visible-row costs were rich-line
-highlighting/allocation and `Buffer.fill`. These are grapheme-aware,
-variable-length object operations, so this change does not add an unsafe or
-semantically invalid SIMD path.
+The profiling task requests `-O3 -g1`: optimized code plus line-table symbols.
+Mojo 1.0 already defaults to optimization level 3, so this makes the evidence
+reproducible rather than claiming a new speedup.
 
-The same compiled binary reported full eager widget construction at 141.862 ms
-p50 and 163.180 ms p95. Its 100-frame batch means were 67.880 µs p50 and 78.370
-µs p95 per frame. Lazy widget/provider construction batch means were 6 ns at
+On an Apple M4 running macOS 26.5.1 on 2026-08-22, the optimized `v0.1.1`
+candidate's eager profile attributed 2,679 of 5,966 steady-state main-thread
+samples (44.9%) to constructing all rows. Allocation was the largest resolved
+child, and peak physical footprint was 41.4 MiB. The lazy profile had no eager
+construction phase and a 6.6 MiB peak footprint; its remaining visible-row
+costs were rich-line highlighting/allocation and `Buffer.fill`. These are
+grapheme-aware, variable-length object operations, so this change does not add
+an unsafe or semantically invalid SIMD path.
+
+The same compiled binary reported full eager widget construction at 99.963 ms
+p50 and 101.082 ms p95. Its 100-frame batch means were 67.540 µs p50 and 68.380
+µs p95 per frame. Lazy widget/provider construction batch means were 5 ns at
 both p50 and p95; generating and highlighting the 24 visible rows produced
-121.950 µs p50 and 150.370 µs p95 per frame. Thus lazy formatting trades
-on-demand visible formatting for removal of the 50,000-row startup phase and an
-84% lower sampled peak footprint. Re-run the p50/p95 suite on the target machine
-rather than treating these observations as universal constants.
+107.740 µs p50 and 109.970 µs p95 per frame. The optimized render suite measured
+107.331 µs for a full 80x24 ANSI frame, 75.358 µs for a one-cell change, and
+73.426 µs for an unchanged frame. Thus lazy formatting trades on-demand visible
+formatting for removal of the 50,000-row startup phase and an 84% lower sampled
+peak footprint. Re-run the suites on the target machine rather than treating
+these observations as universal constants.

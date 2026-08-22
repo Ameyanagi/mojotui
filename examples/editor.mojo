@@ -53,6 +53,7 @@ from mojotui import (
     UpdateResult,
     default_editor_keymap,
     detect_terminal_capabilities,
+    display_column,
     execute_editor_command,
     render_line,
     text_input_action,
@@ -113,9 +114,18 @@ struct FileSavedMessage(Copyable):
 
 struct FileFailedMessage(Copyable):
     var operation: String
+    var path: String
+    var detail: String
 
-    def __init__(out self, var operation: String):
+    def __init__(
+        out self,
+        var operation: String,
+        var path: String,
+        var detail: String,
+    ):
         self.operation = operation^
+        self.path = path^
+        self.detail = detail^
 
 
 comptime EditorExampleMessage = Variant[
@@ -141,6 +151,7 @@ struct EditorExampleModel(Movable):
     var metadata: Optional[FileMetadata]
     var saved_version: Int
     var save_generation: Int
+    var confirming_quit: Bool
     var accent: Color
     var status_background: Color
 
@@ -166,6 +177,7 @@ struct EditorExampleModel(Movable):
         self.metadata = None
         self.saved_version = self.editor.engine.document.version
         self.save_generation = 0
+        self.confirming_quit = False
         self.accent = AdaptiveColor(
             ProfiledColor.from_rgb(70, 60, 160),
             ProfiledColor.from_rgb(80, 200, 255),
@@ -290,6 +302,7 @@ def render_editor_example(
 
     var primary = model.editor.engine.selections.primary_selection()
     var position = model.editor.engine.document.position_at(primary.head)
+    var column = display_column(model.editor.engine.document, primary.head)
     var status_style = Style(
         foreground=model.accent,
         background=model.status_background,
@@ -301,10 +314,7 @@ def render_editor_example(
             [
                 Span(" " + model.status, status_style),
                 Span(
-                    "  Ln "
-                    + String(position.line + 1)
-                    + ", Col "
-                    + String(position.byte_column + 1),
+                    "  Ln " + String(position.line + 1) + ", Col " + String(column + 1),
                     status_style,
                 ),
             ]
@@ -361,7 +371,16 @@ struct EditorApplication(Application, Copyable):
         if message.isa[KeyEvent]():
             var key = message[KeyEvent].copy()
             if _control_key(key, "q"):
+                if model.is_modified() and not model.confirming_quit:
+                    model.confirming_quit = True
+                    model.status = (
+                        "unsaved changes — press Ctrl-Q again to discard, or Ctrl-S to"
+                        " save"
+                    )
+                    return UpdateResult[Self.Effect].redraw_only()
                 return UpdateResult[Self.Effect].exit()
+            if key.is_activation():
+                model.confirming_quit = False
             if _control_key(key, "s"):
                 var command = _save_command(model)
                 if command:
@@ -399,6 +418,7 @@ struct EditorApplication(Application, Copyable):
             model.had_bom = loaded.had_bom
             model.metadata = loaded.metadata.copy()
             model.saved_version = model.editor.engine.document.version
+            model.confirming_quit = False
             model.status = "loaded"
             return UpdateResult[Self.Effect].redraw_only()
 
@@ -406,6 +426,7 @@ struct EditorApplication(Application, Copyable):
             var saved = message[FileSavedMessage].copy()
             model.metadata = saved.metadata.copy()
             model.saved_version = saved.document_version
+            model.confirming_quit = False
             model.status = (
                 "saved" if model.editor.engine.document.version
                 == saved.document_version else "saved older snapshot — unsaved edits remain"
@@ -413,7 +434,9 @@ struct EditorApplication(Application, Copyable):
             return UpdateResult[Self.Effect].redraw_only()
 
         var failure = message[FileFailedMessage].copy()
-        model.status = failure.operation + " failed"
+        model.status = (
+            failure.operation + ' failed for "' + failure.path + '": ' + failure.detail
+        )
         return UpdateResult[Self.Effect].redraw_only()
 
     def view(self, model: Self.Model, area: Rect, mut buffer: Buffer) raises:
@@ -452,8 +475,12 @@ struct EditorAdapter(RuntimeAdapter):
             try:
                 var loaded = self.service.load(effect.path)
                 self.pending.append(EditorExampleMessage(FileLoadedMessage(loaded)))
-            except:
-                self.pending.append(EditorExampleMessage(FileFailedMessage("load")))
+            except error:
+                self.pending.append(
+                    EditorExampleMessage(
+                        FileFailedMessage("load", effect.path, String(error))
+                    )
+                )
             return
 
         var effect = command.effect[SaveFileEffect].copy()
@@ -469,8 +496,12 @@ struct EditorAdapter(RuntimeAdapter):
                     FileSavedMessage(metadata, effect.document_version)
                 )
             )
-        except:
-            self.pending.append(EditorExampleMessage(FileFailedMessage("save")))
+        except error:
+            self.pending.append(
+                EditorExampleMessage(
+                    FileFailedMessage("save", effect.path, String(error))
+                )
+            )
 
     def start(
         mut self,

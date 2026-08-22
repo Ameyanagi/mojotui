@@ -1,0 +1,21 @@
+# Releasing
+
+Mojotui uses an immutable source tag plus the shared
+[`Ameyanagi/mojo-channel`](https://github.com/Ameyanagi/mojo-channel). Conda-forge
+is a transitive dependency channel, not a requirement for publishing Mojotui.
+
+1. Update the workspace, recipe, lockfile, changelog, compatibility, and
+   security policy. Regenerate `pixi.lock` through Pixi; never edit it manually.
+2. Run `pixi run --locked check`, `pixi run --locked package`, and
+   `bash scripts/check-package-metadata.sh` from a clean release candidate.
+3. Merge only after all three native source/package CI targets pass.
+4. Create an annotated `vX.Y.Z` tag at the tested `main` commit. The release
+   workflow checks the peeled target, `origin/main` ancestry, exact dependency
+   metadata, and dated changelog before testing the source archive.
+5. After the protected GitHub source release succeeds, dispatch the central
+   channel workflow for repository `mojotui`, that immutable tag, and
+   `publish=true`. Verify exact clean installs from all three subdirectories.
+
+Never move a published tag or overwrite a channel artifact. A correction uses
+a new patch version; `0.1.1` follows this rule because `0.1.0` was already
+published with overly broad runtime metadata.

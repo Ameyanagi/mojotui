@@ -99,7 +99,7 @@ struct Buffer(Copyable, Sized):
 
     def set_cell(mut self, point: Point, cell: Cell) -> Bool:
         """Set a cell while maintaining wide-grapheme continuation state."""
-        if not self.contains(point):
+        if not self.contains(point) or not cell.is_valid() or cell.continuation:
             return False
         if cell.width == 2 and point.x + 1 >= self.area.right():
             return False
@@ -167,6 +167,8 @@ struct Buffer(Copyable, Sized):
 
     def fill(mut self, area: Rect, cell: Cell):
         """Fill the visible intersection of area and this buffer."""
+        if not cell.is_valid() or cell.continuation:
+            return
         var clipped = self.area.intersection(area)
         if clipped.is_empty():
             return
@@ -230,6 +232,8 @@ struct Buffer(Copyable, Sized):
 
     def differences(self, other: Self) raises -> List[BufferDifference]:
         """Return row-major changes from this buffer to an equal-area buffer."""
+        self.validate_topology()
+        other.validate_topology()
         if not self.area.equals(other.area):
             raise Error(
                 String(
@@ -271,3 +275,33 @@ struct Buffer(Copyable, Sized):
             if not self.cells[index].equals(other.cells[index]):
                 changed += 1
         return changed
+
+    def validate_topology(self) raises:
+        """Reject malformed cells and orphaned wide-grapheme footprints."""
+        if len(self.cells) != self.area.area():
+            raise Error(
+                String(
+                    "buffer storage does not match its area; expected ",
+                    self.area.area(),
+                    " cells, got ",
+                    len(self.cells),
+                )
+            )
+        for index in range(len(self.cells)):
+            var cell = self.cells[index].copy()
+            var x = self.area.x + index % self.area.width
+            var y = self.area.y + index // self.area.width
+            if not cell.is_valid():
+                raise Error(String("invalid cell at (", x, ", ", y, ")"))
+            if cell.continuation:
+                if x == self.area.x or self.cells[index - 1].width != 2:
+                    raise Error(
+                        String("orphan wide-cell continuation at (", x, ", ", y, ")")
+                    )
+            elif cell.width == 2:
+                if x + 1 >= self.area.right() or not self.cells[index + 1].continuation:
+                    raise Error(
+                        String(
+                            "wide-cell leader has no continuation at (", x, ", ", y, ")"
+                        )
+                    )

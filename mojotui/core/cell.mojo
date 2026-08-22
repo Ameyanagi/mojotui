@@ -16,6 +16,7 @@ struct Cell(Copyable):
     var width: Int
     var continuation: Bool
     var style: Style
+    var _ambiguous_is_wide: Bool
 
     def __init__(
         out self,
@@ -23,11 +24,14 @@ struct Cell(Copyable):
         width: Int = 1,
         continuation: Bool = False,
         style: Style = Style.plain(),
+        *,
+        _ambiguous_is_wide: Bool = False,
     ):
         self.symbol = symbol^
-        self.width = width if width >= 0 and width <= 2 else 1
+        self.width = width
         self.continuation = continuation
         self.style = style.copy()
+        self._ambiguous_is_wide = _ambiguous_is_wide
 
     @staticmethod
     def blank() -> Self:
@@ -53,7 +57,22 @@ struct Cell(Copyable):
                 )
             )
         var width = grapheme_width(symbol, ambiguous_is_wide)
-        return Self(symbol^, width, style=style)
+        return Self(
+            symbol^,
+            width,
+            style=style,
+            _ambiguous_is_wide=ambiguous_is_wide,
+        )
+
+    def is_valid(self) -> Bool:
+        """Return whether public fields still describe one safe logical cell."""
+        if self.continuation:
+            return self.symbol == "" and self.width == 0
+        if self.width < 1 or self.width > 2:
+            return False
+        if StringSlice(self.symbol).count_graphemes() != 1:
+            return False
+        return grapheme_width(self.symbol, self._ambiguous_is_wide) == self.width
 
     def equals(self, other: Self) -> Bool:
         return (
@@ -61,6 +80,7 @@ struct Cell(Copyable):
             and self.width == other.width
             and self.continuation == other.continuation
             and self.style.equals(other.style)
+            and self._ambiguous_is_wide == other._ambiguous_is_wide
         )
 
     def apply_style_patch(mut self, patch: StylePatch):

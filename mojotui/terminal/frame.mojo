@@ -1,11 +1,19 @@
 """One stable render transaction and its backend-facing changed cells."""
 
 from std.collections import List, Optional
+from std.memory import ArcPointer
 
 from ..core.buffer import Buffer
 from ..core.cell import Cell
 from ..core.geometry import Point, Rect
 from ..core.widget import StatefulWidget, Widget
+
+
+struct _FrameOwnerToken(Movable):
+    """Identity-only allocation shared by one terminal and its frames."""
+
+    def __init__(out self):
+        pass
 
 
 struct CellChange(Copyable):
@@ -39,6 +47,30 @@ struct FramePatch(Copyable):
         self.full_redraw = full_redraw
         self.cursor = cursor.copy()
 
+    def validate(self) raises:
+        """Reject malformed, unordered, or overlapping backend updates."""
+        var previous_index = -1
+        var previous_width = 0
+        for change_index in range(len(self.changes)):
+            var change = self.changes[change_index].copy()
+            if not self.area.contains(change.point):
+                raise Error("frame patch contains an out-of-area cell change")
+            if not change.cell.is_valid() or change.cell.continuation:
+                raise Error("frame patch contains an invalid cell change")
+            if change.cell.width == 2 and change.point.x + 1 >= self.area.right():
+                raise Error("frame patch contains a clipped wide-cell leader")
+            var index = (change.point.y - self.area.y) * self.area.width + (
+                change.point.x - self.area.x
+            )
+            if index <= previous_index:
+                raise Error("frame patch changes must be unique and row-major")
+            if previous_width == 2 and index == previous_index + 1:
+                raise Error("frame patch change overlaps a preceding wide cell")
+            previous_index = index
+            previous_width = change.cell.width
+        if self.cursor and not self.area.contains(self.cursor.value()):
+            raise Error("frame patch cursor is outside its area")
+
 
 struct Frame(Movable):
     """A complete frame prepared against one stable terminal viewport."""
@@ -46,16 +78,38 @@ struct Frame(Movable):
     var buffer: Buffer
     var cursor: Optional[Point]
     var base_frame_count: Int
+    var _owner: ArcPointer[_FrameOwnerToken]
 
-    def __init__(out self, area: Rect, base_frame_count: Int = 0) raises:
+    def __init__(
+        out self,
+        area: Rect,
+        base_frame_count: Int = 0,
+    ) raises:
         self.buffer = Buffer(area)
         self.cursor = None
         self.base_frame_count = max(base_frame_count, 0)
+        self._owner = ArcPointer(_FrameOwnerToken())
 
-    def __init__(out self, var buffer: Buffer, base_frame_count: Int = 0):
+    def __init__(
+        out self,
+        var buffer: Buffer,
+        base_frame_count: Int = 0,
+    ):
         self.buffer = buffer^
         self.cursor = None
         self.base_frame_count = max(base_frame_count, 0)
+        self._owner = ArcPointer(_FrameOwnerToken())
+
+    def __init__(
+        out self,
+        var buffer: Buffer,
+        var owner: ArcPointer[_FrameOwnerToken],
+        base_frame_count: Int,
+    ):
+        self.buffer = buffer^
+        self.cursor = None
+        self.base_frame_count = max(base_frame_count, 0)
+        self._owner = owner^
 
     def area(self) -> Rect:
         return self.buffer.area.copy()
@@ -114,6 +168,8 @@ def diff_frame(
     cursor: Optional[Point] = None,
 ) raises -> FramePatch:
     """Collect safe row-major changes without emitting wide continuations."""
+    before.validate_topology()
+    after.validate_topology()
     if not before.area.equals(after.area):
         raise Error(
             String(

@@ -319,6 +319,22 @@ def test_cell_from_grapheme_rejects_multiple_graphemes() raises:
         _ = Cell.from_grapheme("ab")
 
 
+def test_set_cell_rejects_unmeasured_or_structurally_invalid_cells() raises:
+    var buffer = Buffer(Rect(0, 0, 3, 1))
+    assert_false(buffer.set_cell({0, 0}, Cell("A", width=2)))
+    assert_false(buffer.set_cell({0, 0}, Cell("界")))
+    assert_false(buffer.set_cell({0, 0}, Cell("", width=0, continuation=True)))
+    assert_true(buffer.cell({0, 0}).equals(Cell.blank()))
+
+
+def test_frame_topology_validation_detects_public_field_corruption() raises:
+    var buffer = Buffer(Rect(0, 0, 2, 1))
+    _ = buffer.set_grapheme({0, 0}, "界")
+    buffer.cells[1].continuation = False
+    with assert_raises(contains="wide-cell leader has no continuation"):
+        buffer.validate_topology()
+
+
 def test_buffer_places_wide_grapheme_and_continuation() raises:
     var buffer = Buffer(Rect(0, 0, 3, 1))
     assert_true(buffer.set_grapheme({0, 0}, "界", Style.plain()))

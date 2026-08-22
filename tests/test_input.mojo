@@ -1,9 +1,16 @@
 from std.collections import List
-from std.testing import TestSuite, assert_equal, assert_false, assert_true
+from std.testing import (
+    TestSuite,
+    assert_equal,
+    assert_false,
+    assert_raises,
+    assert_true,
+)
 
 from mojotui import (
     FocusEvent,
     InputEvent,
+    InputLimits,
     InputParser,
     KeyEvent,
     MouseEvent,
@@ -430,6 +437,98 @@ def test_unknown_complete_sequence_is_preserved() raises:
     assert_equal(len(function_like), 1)
     assert_true(function_like[0].isa[UnknownEvent]())
     assert_equal(function_like[0][UnknownEvent].sequence, "\x1b[P")
+
+
+def test_input_limits_reject_invalid_configuration() raises:
+    with assert_raises(contains="input batch limit must be positive"):
+        _ = InputLimits(batch_bytes=0)
+    with assert_raises(contains="input sequence limit must be at least 4 bytes"):
+        _ = InputLimits(sequence_bytes=3)
+    with assert_raises(contains="paste limit must be positive"):
+        _ = InputLimits(paste_bytes=0)
+
+
+def test_oversized_batch_permanently_poisons_parser() raises:
+    var parser = InputParser(InputLimits(batch_bytes=2))
+    with assert_raises(contains="input batch exceeds 2 bytes; got 3"):
+        _ = parser.feed(bytes3(0x61, 0x62, 0x63))
+    with assert_raises(contains="input parser is poisoned"):
+        _ = parser.feed([UInt8(0x61)])
+    with assert_raises(contains="input parser is poisoned"):
+        _ = parser.finish()
+
+
+def test_incomplete_sequence_limit_permanently_poisons_parser() raises:
+    var parser = InputParser(InputLimits(sequence_bytes=4))
+    var incomplete: List[UInt8] = [UInt8(0x1B), UInt8(0x5B), UInt8(0x31), UInt8(0x3B)]
+    with assert_raises(contains="incomplete terminal sequence reached 4 bytes"):
+        _ = parser.feed(incomplete^)
+    with assert_raises(contains="input parser is poisoned"):
+        _ = parser.flush_escape()
+
+
+def test_paste_limit_and_unterminated_paste_eof_poison_parser() raises:
+    var start: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x32),
+        UInt8(0x30),
+        UInt8(0x30),
+        UInt8(0x7E),
+    ]
+    var limited = InputParser(InputLimits(paste_bytes=2))
+    _ = limited.feed(start.copy())
+    with assert_raises(contains="bracketed paste exceeds 2 bytes"):
+        _ = limited.feed(bytes3(0x61, 0x62, 0x63))
+    with assert_raises(contains="input parser is poisoned"):
+        _ = limited.feed([UInt8(0x78)])
+
+    var unterminated = InputParser()
+    _ = unterminated.feed(start^)
+    _ = unterminated.feed(bytes2(0x6F, 0x6B))
+    with assert_raises(contains="input ended inside bracketed paste"):
+        _ = unterminated.finish()
+
+
+def test_paste_at_exact_limit_completes() raises:
+    var parser = InputParser(InputLimits(paste_bytes=2))
+    var sequence: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x32),
+        UInt8(0x30),
+        UInt8(0x30),
+        UInt8(0x7E),
+        UInt8(0x6F),
+        UInt8(0x6B),
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x32),
+        UInt8(0x30),
+        UInt8(0x31),
+        UInt8(0x7E),
+    ]
+    var events = parser.feed(sequence^)
+    assert_equal(len(events), 1)
+    assert_true(events[0].isa[PasteEvent]())
+    assert_equal(events[0][PasteEvent].text, "ok")
+
+
+def test_eof_finalizes_bare_escape_and_rejects_future_input() raises:
+    var parser = InputParser()
+    _ = parser.feed([UInt8(0x1B)])
+    var events = parser.finish()
+    assert_equal(len(events), 1)
+    assert_true(key(events[0].copy()).code == KeyEvent.ESCAPE)
+    with assert_raises(contains="already reached end of input"):
+        _ = parser.feed([UInt8(0x61)])
+
+
+def test_eof_in_incomplete_utf8_poison_parser() raises:
+    var parser = InputParser()
+    _ = parser.feed(bytes2(0xE7, 0x95))
+    with assert_raises(contains="incomplete terminal sequence of 2 bytes"):
+        _ = parser.finish()
 
 
 def main() raises:

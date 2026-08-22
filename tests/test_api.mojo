@@ -313,6 +313,37 @@ def test_terminal_only_commits_a_successfully_presented_frame() raises:
     assert_equal(terminal.last_frame().cell({1, 0}).symbol, "y")
 
 
+def test_present_failure_after_success_forces_physical_resynchronization() raises:
+    var terminal = Terminal(FailingBackend(Rect(0, 0, 2, 1)))
+    terminal.backend.should_fail = False
+    var first = terminal.begin_frame()
+    _ = first.buffer.set_cell({0, 0}, Cell("a"))
+    var completed = terminal.finish_frame(first^)
+    assert_true(completed.full_redraw)
+
+    terminal.backend.should_fail = True
+    var failed = terminal.begin_frame()
+    _ = failed.buffer.set_cell({1, 0}, Cell("b"))
+    with assert_raises(contains="intentional presentation failure"):
+        _ = terminal.finish_frame(failed^)
+    assert_equal(terminal.frame_count, 1)
+
+    terminal.backend.should_fail = False
+    var recovered = terminal.begin_frame()
+    _ = recovered.buffer.set_cell({0, 0}, Cell("a"))
+    _ = recovered.buffer.set_cell({1, 0}, Cell("b"))
+    completed = terminal.finish_frame(recovered^)
+    assert_true(completed.full_redraw)
+
+
+def test_terminal_rejects_a_frame_created_by_another_terminal() raises:
+    var first = Terminal(HeadlessBackend(Rect(0, 0, 2, 1)))
+    var second = Terminal(HeadlessBackend(Rect(0, 0, 2, 1)))
+    var foreign = first.begin_frame()
+    with assert_raises(contains="frame belongs to a different terminal"):
+        _ = second.finish_frame(foreign^)
+
+
 def test_application_uses_typed_model_and_message_contract() raises:
     var application = CounterApplication()
     var initialized = application.init()

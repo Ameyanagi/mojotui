@@ -68,5 +68,20 @@ def test_text_area_checkbox_and_button_compose_existing_primitives() raises:
     assert_true(controls.cell({0, 1}).style.has(Style.REVERSED))
 
 
+def test_form_inputs_offer_effect_free_readonly_rendering() raises:
+    var input_state = EditorState("query")
+    input_state.top_line = 7
+    input_state.horizontal_offset = 2
+    var buffer = Buffer(Rect(0, 0, 12, 3))
+    var area = buffer.area.copy()
+    TextInput(focused=True).render_readonly(area, buffer, input_state)
+    assert_equal(input_state.top_line, 7)
+    assert_equal(input_state.horizontal_offset, 2)
+
+    TextArea().render_readonly(area, buffer, input_state)
+    assert_equal(input_state.top_line, 7)
+    assert_equal(input_state.horizontal_offset, 2)
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

@@ -82,7 +82,7 @@ def run_case(
         else:
             os.write(master, b"x")
 
-        expected_success = mode != "error"
+        expected_success = mode not in ("error", "host-init-error")
         deadline = time.monotonic() + READ_TIMEOUT_SECONDS
         while process.poll() is None and time.monotonic() < deadline:
             readable, _, _ = select.select([master], [], [], 0.1)
@@ -184,6 +184,14 @@ def run_editor_case(binary: Path) -> None:
         if raw[3] & (termios.ICANON | termios.ECHO):
             raise AssertionError("editor: terminal did not enter raw mode")
 
+        os.write(master, b"x")
+        output += read_until(master, process, b"edited")
+        os.write(master, b"\x11")
+        # The renderer positions each status word independently, so ANSI cursor
+        # sequences can appear between "unsaved" and "changes" in the byte stream.
+        output += read_until(master, process, b"unsaved")
+        if process.poll() is not None:
+            raise AssertionError("editor: first dirty Ctrl-Q exited without confirmation")
         os.write(master, b"\x11")
         deadline = time.monotonic() + READ_TIMEOUT_SECONDS
         while process.poll() is None and time.monotonic() < deadline:
@@ -266,7 +274,14 @@ def main() -> int:
         )
         return 2
     binary = Path(sys.argv[1]).resolve()
-    for mode in ("normal", "implicit", "error", "host"):
+    for mode in (
+        "normal",
+        "implicit",
+        "error",
+        "host",
+        "overlap",
+        "host-init-error",
+    ):
         run_case(binary, mode)
     run_case(binary, "control-c", send_control_c=True)
     run_case(binary, "resize", resize=True)
@@ -278,7 +293,7 @@ def main() -> int:
         run_virtual_list_case(Path(sys.argv[3]).resolve())
     print(
         "PTY lifecycle tests passed "
-        "(normal, implicit, error, host, control-c, resize, split descriptors"
+        "(normal, implicit, error, host, overlap, host-init-error, control-c, resize, split descriptors"
         + (", editor" if len(sys.argv) >= 3 else "")
         + (", virtual-list" if len(sys.argv) == 4 else "")
         + ")."

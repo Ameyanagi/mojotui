@@ -292,34 +292,133 @@ comptime InputEvent = Variant[
 ]
 
 
+struct InputLimits(Copyable):
+    """Validated memory limits for one untrusted terminal input stream."""
+
+    comptime DEFAULT_BATCH_BYTES = 65_536
+    comptime DEFAULT_SEQUENCE_BYTES = 4_096
+    comptime DEFAULT_PASTE_BYTES = 1_048_576
+
+    var batch_bytes: Int
+    var sequence_bytes: Int
+    var paste_bytes: Int
+
+    def __init__(
+        out self,
+        batch_bytes: Int = Self.DEFAULT_BATCH_BYTES,
+        sequence_bytes: Int = Self.DEFAULT_SEQUENCE_BYTES,
+        paste_bytes: Int = Self.DEFAULT_PASTE_BYTES,
+    ) raises:
+        if batch_bytes <= 0:
+            raise Error("input batch limit must be positive; got ", String(batch_bytes))
+        if sequence_bytes < 4:
+            raise Error(
+                "input sequence limit must be at least 4 bytes; got ",
+                String(sequence_bytes),
+            )
+        if paste_bytes <= 0:
+            raise Error("paste limit must be positive; got ", String(paste_bytes))
+        self.batch_bytes = batch_bytes
+        self.sequence_bytes = sequence_bytes
+        self.paste_bytes = paste_bytes
+
+    @staticmethod
+    def defaults() -> Self:
+        return Self(
+            Self.DEFAULT_BATCH_BYTES,
+            Self.DEFAULT_SEQUENCE_BYTES,
+            Self.DEFAULT_PASTE_BYTES,
+            _validated=True,
+        )
+
+    def __init__(
+        out self,
+        batch_bytes: Int,
+        sequence_bytes: Int,
+        paste_bytes: Int,
+        *,
+        _validated: Bool,
+    ):
+        self.batch_bytes = batch_bytes
+        self.sequence_bytes = sequence_bytes
+        self.paste_bytes = paste_bytes
+
+
 struct InputParser(Movable):
-    """Incrementally parse fragmented and combined terminal input."""
+    """Incrementally parse bounded, fragmented terminal input.
+
+    Limit violations and structurally incomplete EOF permanently poison the
+    parser. This makes a rejected byte stream deterministic: callers cannot
+    discard the error and continue interpreting attacker-controlled suffixes.
+    """
 
     var pending: List[UInt8]
     var cursor: Int
     var paste_bytes: List[UInt8]
     var in_paste: Bool
+    var limits: InputLimits
+    var poisoned: Bool
+    var poison_reason: String
+    var finished: Bool
 
-    def __init__(out self):
+    def __init__(out self, limits: InputLimits = InputLimits.defaults()):
         self.pending = List[UInt8]()
         self.cursor = 0
         self.paste_bytes = List[UInt8]()
         self.in_paste = False
+        self.limits = limits.copy()
+        self.poisoned = False
+        self.poison_reason = String()
+        self.finished = False
+
+    def _raise_if_unusable(self) raises:
+        if self.poisoned:
+            raise Error("input parser is poisoned: ", self.poison_reason)
+        if self.finished:
+            raise Error("input parser has already reached end of input")
+
+    def _poison(mut self, var reason: String) raises:
+        self.poisoned = True
+        self.poison_reason = reason^
+        self.pending.clear()
+        self.paste_bytes.clear()
+        self.cursor = 0
+        self.in_paste = False
+        raise Error("input parser is poisoned: ", self.poison_reason)
 
     def pending_byte_count(self) -> Int:
         return len(self.pending) - self.cursor
 
-    def feed(mut self, var bytes: List[UInt8]) -> List[InputEvent]:
+    def feed(mut self, var bytes: List[UInt8]) raises -> List[InputEvent]:
         """Consume available bytes and retain incomplete sequences."""
+        self._raise_if_unusable()
+        if len(bytes) > self.limits.batch_bytes:
+            self._poison(
+                String(
+                    "input batch exceeds ",
+                    self.limits.batch_bytes,
+                    " bytes; got ",
+                    len(bytes),
+                )
+            )
         self.pending.extend(bytes^)
         var events = List[InputEvent]()
         while self._parse_one(events):
             pass
         self._compact()
+        if self.pending_byte_count() >= self.limits.sequence_bytes:
+            self._poison(
+                String(
+                    "incomplete terminal sequence reached ",
+                    self.limits.sequence_bytes,
+                    " bytes",
+                )
+            )
         return events^
 
-    def flush_escape(mut self) -> List[InputEvent]:
+    def flush_escape(mut self) raises -> List[InputEvent]:
         """Resolve a pending Escape prefix after the configured timeout."""
+        self._raise_if_unusable()
         var events = List[InputEvent]()
         if self.pending_byte_count() > 0 and self._byte(0) == 0x1B:
             self._consume(1)
@@ -327,6 +426,30 @@ struct InputParser(Movable):
         while self._parse_one(events):
             pass
         self._compact()
+        return events^
+
+    def finish(mut self) raises -> List[InputEvent]:
+        """Finalize a stream at EOF, accepting only an isolated Escape prefix."""
+        self._raise_if_unusable()
+        var events = List[InputEvent]()
+        while self._parse_one(events):
+            pass
+        self._compact()
+        if self.in_paste:
+            self._poison("input ended inside bracketed paste")
+        if self.pending_byte_count() == 1 and self._byte(0) == 0x1B:
+            self._consume(1)
+            events.append(InputEvent(KeyEvent.named(KeyEvent.ESCAPE)))
+            self._compact()
+        elif self.pending_byte_count() != 0:
+            self._poison(
+                String(
+                    "input ended with an incomplete terminal sequence of ",
+                    self.pending_byte_count(),
+                    " bytes",
+                )
+            )
+        self.finished = True
         return events^
 
     def _byte(self, offset: Int) -> UInt8:
@@ -425,7 +548,7 @@ struct InputParser(Movable):
         self._consume(1)
         events.append(InputEvent(KeyEvent.character(text^, modifiers=KeyEvent.CONTROL)))
 
-    def _parse_paste(mut self, mut events: List[InputEvent]) -> Bool:
+    def _parse_paste(mut self, mut events: List[InputEvent]) raises -> Bool:
         if self.pending_byte_count() == 0:
             return False
         if Int(self._byte(0)) == 0x1B and self.pending_byte_count() < 6:
@@ -439,6 +562,14 @@ struct InputParser(Movable):
             return True
         self.paste_bytes.append(self._byte(0))
         self._consume(1)
+        if len(self.paste_bytes) > self.limits.paste_bytes:
+            self._poison(
+                String(
+                    "bracketed paste exceeds ",
+                    self.limits.paste_bytes,
+                    " bytes",
+                )
+            )
         return True
 
     def _csi_length(self) -> Int:
@@ -761,7 +892,7 @@ struct InputParser(Movable):
             return True
         return self._append_character(events, offset=1, modifiers=KeyEvent.ALT)
 
-    def _parse_one(mut self, mut events: List[InputEvent]) -> Bool:
+    def _parse_one(mut self, mut events: List[InputEvent]) raises -> Bool:
         if self.in_paste:
             return self._parse_paste(events)
         if self.pending_byte_count() == 0:

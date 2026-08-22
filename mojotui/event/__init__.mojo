@@ -3,6 +3,7 @@
 from .input import (
     FocusEvent,
     InputEvent,
+    InputLimits,
     InputParser,
     KeyCode,
     KeyEvent,
