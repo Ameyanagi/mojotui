@@ -3,6 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 contract_check="${script_dir}/check-release-contract.sh"
+release_workflow="${script_dir}/../.github/workflows/release.yml"
 fixture_dir="$(mktemp -d "${TMPDIR:-/tmp}/mojotui-release-contract.XXXXXX")"
 trap 'rm -rf -- "$fixture_dir"' EXIT
 
@@ -83,4 +84,9 @@ write_metadata
 perl -0pi -e 's/mojo-moji ==0\.1\.0/mojo-moji/' "${fixture_dir}/conda.recipe/recipe.yaml"
 expect_failure 'an inexact recipe dependency' bash -c "cd '$fixture_dir' && bash '$contract_check' --metadata-only"
 
-echo 'release contract tests passed (metadata, exact dependencies, annotated tag, target, and ancestry)'
+if ! grep -Fq 'GH_REPO: ${{ github.repository }}' "$release_workflow"; then
+  echo 'release publisher must set GH_REPO before running outside a Git checkout' >&2
+  exit 1
+fi
+
+echo 'release contract tests passed (metadata, exact dependencies, annotated tag, target, ancestry, and repository context)'
