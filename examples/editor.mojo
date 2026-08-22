@@ -28,7 +28,6 @@ from mojotui import (
     FileMetadata,
     InitResult,
     InputEvent,
-    KeyChord,
     KeyEvent,
     Keymap,
     KeymapState,
@@ -182,7 +181,8 @@ struct EditorExampleModel(Movable):
 
 def _control_key(key: KeyEvent, text: StringSlice) -> Bool:
     return (
-        key.code == KeyEvent.CHARACTER
+        key.is_activation()
+        and key.code == KeyEvent.CHARACTER
         and key.text == text
         and key.modifiers.contains(KeyEvent.CONTROL)
     )
@@ -210,7 +210,7 @@ def _apply_key(
     # their own message type and use that timestamp here.
     var resolution = model.keymap.resolve(
         model.keymap_state,
-        KeyChord.from_event(key),
+        key,
         "editor",
         0,
     )

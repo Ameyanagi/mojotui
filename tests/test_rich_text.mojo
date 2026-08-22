@@ -93,6 +93,11 @@ def test_highlighted_expands_matches_to_wide_grapheme_boundaries() raises:
     assert_equal(cjk.spans[1].content, "界")
     assert_equal(cjk.spans[1].width(), 2)
 
+    var same_grapheme: MojoList[Int] = [1, 3]
+    var merged_family = Line.highlighted("a👩‍👩‍👧b", same_grapheme, patch)
+    assert_equal(len(merged_family.spans), 3)
+    assert_equal(merged_family.spans[1].content, "👩‍👩‍👧")
+
 
 def test_highlighted_composes_base_and_match_styles() raises:
     var base = StylePatch(

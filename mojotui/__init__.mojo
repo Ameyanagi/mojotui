@@ -193,6 +193,8 @@ from .widgets import (
     LineGauge,
     List,
     ListItem,
+    ListLineProvider,
+    ListRenderContext,
     ListState,
     Marker,
     Paragraph,
@@ -209,4 +211,5 @@ from .widgets import (
     TableState,
     Tabs,
     TitlePosition,
+    VirtualList,
 )

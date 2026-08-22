@@ -272,17 +272,22 @@ struct Line(Copyable, Widget):
             boundaries.append(byte_offset)
 
         var expanded = List[ByteRange]()
+        var start_boundary_index = 0
+        var end_boundary_index = 0
         for range_index in range(len(ranges)):
             var match_range = ranges[range_index]
-            var start = 0
-            var end = content.byte_length()
-            for boundary_index in range(len(boundaries)):
-                var boundary = boundaries[boundary_index]
-                if boundary <= match_range.start():
-                    start = boundary
-                if boundary >= match_range.end():
-                    end = boundary
-                    break
+            while (
+                start_boundary_index + 1 < len(boundaries)
+                and boundaries[start_boundary_index + 1] <= match_range.start()
+            ):
+                start_boundary_index += 1
+            while (
+                end_boundary_index + 1 < len(boundaries)
+                and boundaries[end_boundary_index] < match_range.end()
+            ):
+                end_boundary_index += 1
+            var start = boundaries[start_boundary_index]
+            var end = boundaries[end_boundary_index]
             if len(expanded) > 0 and start <= expanded[len(expanded) - 1].end():
                 var previous = expanded[len(expanded) - 1]
                 expanded[len(expanded) - 1] = ByteRange(

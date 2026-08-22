@@ -11,6 +11,8 @@ version = "0.1.0"
 
 [tasks]
 bench = { cmd = "mojo run -I . benchmarks/render.mojo", description = "Benchmark full, changed, and unchanged 80x24 ANSI frames" }
+bench-collections = { cmd = "mojo run -I . benchmarks/collections.mojo", description = "Benchmark distant viewport jumps in 50k-row lists and tables" }
+bench-large-list = { cmd = "mojo run -I . benchmarks/large_list.mojo", description = "Benchmark eager and lazy highlighted 50k-row lists with p50/p95" }
 bench-editor = { cmd = "mojo run -I . benchmarks/editor.mojo", description = "Benchmark 10 MiB editor edits, history, and viewport rendering" }
 check = { depends-on = ["test", "lint"], description = "Run the complete non-mutating validation suite" }
 compiler-lint = { cmd = "mojo precompile --Werror --warn-on-unstable-apis mojotui -o .pixi/mojotui-lint.mojoc", description = "Compile the package with warnings treated as errors" }
@@ -19,6 +21,7 @@ dashboard = { cmd = "mojo run -I . examples/dashboard.mojo", description = "Run 
 editor = { cmd = "mojo run -I . examples/editor.mojo", description = "Run the interactive text editor; pass a file path after --" }
 format = { cmd = "bash scripts/format.sh", description = "Format Mojo source files in place" }
 fuzzy = { cmd = "mojo run -I . examples/fuzzy.mojo", description = "Run the interactive fuzzy-picker example" }
+virtual-list = { cmd = "mojo run -I . examples/virtual_list.mojo", description = "Run the lazy 50k-row list example" }
 format-check = { cmd = "bash scripts/check-format.sh", description = "Verify Mojo formatting without modifying source files" }
 hello-loop = { cmd = "mojo run -I . examples/hello_loop.mojo", description = "Run the manual-event-loop hello example" }
 lint = { depends-on = ["format-check", "readme-check", "type-check", "unsafe-check"], description = "Run formatting, README, strict-type, and unsafe-boundary checks" }

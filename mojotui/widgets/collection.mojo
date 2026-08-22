@@ -133,6 +133,178 @@ struct ListState(Copyable):
         _clamp_collection_state(self.selected, self.offset, item_count, viewport_height)
 
 
+struct ListRenderContext(Copyable):
+    """Visible-row state passed to a lazy list provider.
+
+    `index` addresses the provider's complete logical collection, while
+    `viewport_row`, `viewport_offset`, and `viewport_height` describe the
+    current clipped window. `selection` exposes the logical cursor without
+    requiring the provider to own application state.
+    """
+
+    var index: Int
+    var item_count: Int
+    var viewport_row: Int
+    var viewport_offset: Int
+    var viewport_height: Int
+    var selection: Optional[UInt]
+    var selected: Bool
+
+    def __init__(
+        out self,
+        index: Int,
+        item_count: Int,
+        viewport_row: Int,
+        viewport_offset: Int,
+        viewport_height: Int,
+        selection: Optional[UInt],
+    ) raises:
+        if item_count < 0:
+            raise Error("list render context item count must be non-negative")
+        if index < 0 or index >= item_count:
+            raise Error("list render context index is outside the collection")
+        if viewport_row < 0 or viewport_height < 0:
+            raise Error("list render context viewport values must be non-negative")
+        if viewport_offset < 0 or index != viewport_offset + viewport_row:
+            raise Error("list render context row does not match its viewport")
+        if viewport_height == 0 or viewport_row >= viewport_height:
+            raise Error("list render context row is outside its viewport height")
+        if selection and selection.value() >= UInt(item_count):
+            raise Error("list render context selection is outside the collection")
+        self.index = index
+        self.item_count = item_count
+        self.viewport_row = viewport_row
+        self.viewport_offset = viewport_offset
+        self.viewport_height = viewport_height
+        self.selection = selection.copy()
+        self.selected = selection and index == Int(selection.value())
+
+
+trait ListLineProvider(Copyable, Deinitable, Movable):
+    """Random-access source whose rich lines are requested only when visible."""
+
+    def item_count(self) -> Int:
+        ...
+
+    def line(self, context: ListRenderContext) raises -> Line:
+        ...
+
+
+struct VirtualList[Provider: ListLineProvider](Copyable, StatefulWidget):
+    """A uniform one-row list that never materializes the complete collection.
+
+    The statically dispatched provider is called at most once for each visible
+    logical row. Existing `List` applications remain source compatible; use
+    `VirtualList` when the backing collection is large or rows are expensive to
+    highlight and format. Construction move-owns the provider so large backing
+    collections are not copied on entry.
+    """
+
+    comptime State = ListState
+
+    var provider: Self.Provider
+    var style: Style
+    var selected_style: StylePatch
+    var highlight_symbol: String
+    var highlight_spacing: HighlightSpacing
+    var scroll_padding: Int
+
+    def __init__(
+        out self,
+        var provider: Self.Provider,
+        style: Style = Style.plain(),
+        selected_style: StylePatch = StylePatch(add_modifiers=Style.REVERSED),
+        var highlight_symbol: String = "> ",
+        highlight_spacing: HighlightSpacing = HighlightSpacing.ALWAYS,
+        scroll_padding: Int = 0,
+    ):
+        self.provider = provider^
+        self.style = style.copy()
+        self.selected_style = selected_style.copy()
+        self.highlight_symbol = highlight_symbol^
+        self.highlight_spacing = highlight_spacing
+        self.scroll_padding = max(scroll_padding, 0)
+
+    def _ensure_visible(self, mut state: ListState, viewport_height: Int, count: Int):
+        _clamp_collection_state(state.selected, state.offset, count, viewport_height)
+        if count == 0 or viewport_height <= 0 or not state.selected:
+            return
+        var selected = Int(state.selected.value())
+        var desired_start = max(selected - self.scroll_padding, 0)
+        var desired_end = min(selected + self.scroll_padding + 1, count)
+        if desired_start < state.offset:
+            state.offset = desired_start
+        state.offset = min(
+            selected,
+            max(state.offset, desired_end - viewport_height),
+        )
+
+    def _marker_width(self, state: ListState, width: Int) -> Int:
+        if self.highlight_spacing == HighlightSpacing.NEVER:
+            return 0
+        if (
+            self.highlight_spacing == HighlightSpacing.WHEN_SELECTED
+            and not state.selected
+        ):
+            return 0
+        return min(text_width(self.highlight_symbol), width)
+
+    def render(
+        self,
+        area: Rect,
+        mut buffer: Buffer,
+        mut state: ListState,
+    ) raises:
+        var visible_area = buffer.area.intersection(area)
+        var count = self.provider.item_count()
+        if count < 0:
+            raise Error("list line provider item count must be non-negative")
+        if visible_area.is_empty():
+            self._ensure_visible(state, 0, count)
+            return
+        self._ensure_visible(state, visible_area.height, count)
+        buffer.fill(visible_area, Cell(style=self.style))
+
+        var marker_width = self._marker_width(state, visible_area.width)
+        var content_x = visible_area.x + marker_width
+        var content_width = visible_area.width - marker_width
+        var visible_count = min(visible_area.height, count - state.offset)
+        for viewport_row in range(visible_count):
+            var item_index = state.offset + viewport_row
+            var y = visible_area.y + viewport_row
+            var context = ListRenderContext(
+                item_index,
+                count,
+                viewport_row,
+                state.offset,
+                visible_area.height,
+                state.selected,
+            )
+            if context.selected:
+                buffer.fill(
+                    Rect(visible_area.x, y, visible_area.width, 1),
+                    Cell(style=self.style.patched(self.selected_style)),
+                )
+                if marker_width > 0:
+                    _render_selected_line(
+                        Line.from_text(self.highlight_symbol),
+                        Rect(visible_area.x, y, marker_width, 1),
+                        buffer,
+                        True,
+                        self.style,
+                        self.selected_style,
+                    )
+            if content_width > 0:
+                _render_selected_line(
+                    self.provider.line(context),
+                    Rect(content_x, y, content_width, 1),
+                    buffer,
+                    context.selected,
+                    self.style,
+                    self.selected_style,
+                )
+
+
 struct List(Copyable, StatefulWidget):
     """A selectable list that only visits rows in the current viewport."""
 
@@ -167,12 +339,6 @@ struct List(Copyable, StatefulWidget):
     def _item_height(self, index: Int) -> Int:
         return self.items[index].height()
 
-    def _height_between(self, start: Int, end: Int) -> Int:
-        var height = 0
-        for index in range(max(start, 0), min(end, len(self.items))):
-            height += self._item_height(index)
-        return height
-
     def _ensure_visible(self, mut state: ListState, viewport_height: Int):
         var count = len(self.items)
         if count == 0:
@@ -190,11 +356,28 @@ struct List(Copyable, StatefulWidget):
         var desired_end = min(selected + self.scroll_padding + 1, count)
         if desired_start < state.offset or selected < state.offset:
             state.offset = desired_start
-        while (
-            state.offset < selected
-            and self._height_between(state.offset, desired_end) > viewport_height
-        ):
-            state.offset += 1
+
+        # Work backwards only across rows that can fit in this viewport. This
+        # remains bounded by visible content and stays correct when callers
+        # replace or mutate public items after widget construction.
+        var remaining_height = viewport_height
+        var fits_selected_tail = True
+        for index in range(selected, desired_end):
+            var height = self._item_height(index)
+            if height > remaining_height:
+                fits_selected_tail = False
+                break
+            remaining_height -= height
+        var earliest = selected
+        if fits_selected_tail:
+            while earliest > state.offset:
+                var candidate = earliest - 1
+                var height = self._item_height(candidate)
+                if height > remaining_height:
+                    break
+                remaining_height -= height
+                earliest = candidate
+        state.offset = max(state.offset, earliest)
 
     def _marker_width(self, state: ListState, width: Int) -> Int:
         if self.highlight_spacing == HighlightSpacing.NEVER:
@@ -261,7 +444,11 @@ struct List(Copyable, StatefulWidget):
 
 
 struct Row(Copyable):
-    """One table row containing multiline rich-text cells."""
+    """One table row containing multiline rich-text cells.
+
+    Construction and every render-time read normalize `height` to at least one,
+    including after unusual direct public-field mutation.
+    """
 
     var cells: MojoList[Text]
     var height: Int
@@ -283,6 +470,11 @@ struct Row(Copyable):
         for index in range(len(cells)):
             text_cells.append(Text.from_line(cells[index]))
         return Self(text_cells^, height)
+
+
+def _row_height(row: Row) -> Int:
+    """Return the rendering invariant for publicly mutable row height."""
+    return max(row.height, 1)
 
 
 struct TableSelection(Copyable, Equatable, ImplicitlyCopyable):
@@ -506,12 +698,6 @@ struct Table(Copyable, StatefulWidget):
                         self.selected_style,
                     )
 
-    def _height_between(self, start: Int, end: Int) -> Int:
-        var height = 0
-        for index in range(max(start, 0), min(end, len(self.rows))):
-            height += self.rows[index].height
-        return height
-
     def _ensure_visible(self, mut state: TableState, viewport_height: Int):
         var count = len(self.rows)
         if count == 0:
@@ -530,11 +716,25 @@ struct Table(Copyable, StatefulWidget):
         var desired_end = min(selected + self.scroll_padding + 1, count)
         if desired_start < state.offset or selected < state.offset:
             state.offset = desired_start
-        while (
-            state.offset < selected
-            and self._height_between(state.offset, desired_end) > viewport_height
-        ):
-            state.offset += 1
+
+        var remaining_height = viewport_height
+        var fits_selected_tail = True
+        for index in range(selected, desired_end):
+            var height = _row_height(self.rows[index])
+            if height > remaining_height:
+                fits_selected_tail = False
+                break
+            remaining_height -= height
+        var earliest = selected
+        if fits_selected_tail:
+            while earliest > state.offset:
+                var candidate = earliest - 1
+                var height = _row_height(self.rows[candidate])
+                if height > remaining_height:
+                    break
+                remaining_height -= height
+                earliest = candidate
+        state.offset = max(state.offset, earliest)
 
     def render(self, area: Rect, mut buffer: Buffer, mut state: TableState):
         var visible_area = buffer.area.intersection(area)
@@ -545,7 +745,7 @@ struct Table(Copyable, StatefulWidget):
 
         var body_y = visible_area.y
         if self.show_header:
-            var header_height = min(self.header.height, visible_area.height)
+            var header_height = min(_row_height(self.header), visible_area.height)
             self._render_row(
                 self.header,
                 Rect(visible_area.x, body_y, visible_area.width, header_height),
@@ -559,7 +759,7 @@ struct Table(Copyable, StatefulWidget):
             body_y += header_height
         var body_bottom = visible_area.bottom()
         if self.show_footer and body_bottom > body_y:
-            var footer_height = min(self.footer.height, body_bottom - body_y)
+            var footer_height = min(_row_height(self.footer), body_bottom - body_y)
             body_bottom -= footer_height
             self._render_row(
                 self.footer,
@@ -582,7 +782,7 @@ struct Table(Copyable, StatefulWidget):
         for row_index in range(state.offset, len(self.rows)):
             if y >= body_bottom:
                 break
-            var row_height = min(self.rows[row_index].height, body_bottom - y)
+            var row_height = min(_row_height(self.rows[row_index]), body_bottom - y)
             var selected = state.selected and row_index == Int(state.selected.value())
             self._render_row(
                 self.rows[row_index],

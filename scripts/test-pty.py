@@ -211,10 +211,57 @@ def run_editor_case(binary: Path) -> None:
         os.close(slave)
 
 
+def run_virtual_list_case(binary: Path) -> None:
+    """Jump through a real PTY and verify a lazy distant row is presented."""
+    master, slave = pty.openpty()
+    try:
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+        original = termios.tcgetattr(slave)
+        process = subprocess.Popen(
+            [str(binary)],
+            stdin=slave,
+            stdout=slave,
+            stderr=slave,
+            close_fds=True,
+        )
+        output = read_until(master, process, b"formatted")
+        raw = termios.tcgetattr(slave)
+        if raw[3] & (termios.ICANON | termios.ECHO):
+            raise AssertionError("virtual-list: terminal did not enter raw mode")
+
+        os.write(master, b"\x1b[F")
+        # The first digit is independently styled by Line.highlighted; the
+        # remaining suffix is a stable marker for the selected final row.
+        output += read_until(master, process, b"9999")
+        os.write(master, b"q")
+        process.wait(timeout=READ_TIMEOUT_SECONDS)
+        if process.returncode != 0:
+            raise AssertionError(
+                "virtual-list: expected success, "
+                f"got exit {process.returncode}; output={output!r}"
+            )
+        if b"\x1b[?1049l" not in output:
+            readable, _, _ = select.select([master], [], [], 0.2)
+            if readable:
+                try:
+                    output += os.read(master, 4096)
+                except OSError:
+                    pass
+        if b"\x1b[?1049l" not in output:
+            raise AssertionError("virtual-list: alternate screen was not restored")
+        restored = termios.tcgetattr(slave)
+        if comparable_attributes(restored) != comparable_attributes(original):
+            raise AssertionError("virtual-list: terminal attributes were not restored")
+    finally:
+        os.close(master)
+        os.close(slave)
+
+
 def main() -> int:
-    if len(sys.argv) not in (2, 3):
+    if len(sys.argv) not in (2, 3, 4):
         print(
-            "usage: test-pty.py PATH_TO_SESSION_PROBE [PATH_TO_EDITOR]",
+            "usage: test-pty.py PATH_TO_SESSION_PROBE "
+            "[PATH_TO_EDITOR [PATH_TO_VIRTUAL_LIST]]",
             file=sys.stderr,
         )
         return 2
@@ -226,10 +273,14 @@ def main() -> int:
     run_split_descriptor_case(binary)
     if len(sys.argv) == 3:
         run_editor_case(Path(sys.argv[2]).resolve())
+    elif len(sys.argv) == 4:
+        run_editor_case(Path(sys.argv[2]).resolve())
+        run_virtual_list_case(Path(sys.argv[3]).resolve())
     print(
         "PTY lifecycle tests passed "
         "(normal, implicit, error, host, control-c, resize, split descriptors"
-        + (", editor" if len(sys.argv) == 3 else "")
+        + (", editor" if len(sys.argv) >= 3 else "")
+        + (", virtual-list" if len(sys.argv) == 4 else "")
         + ")."
     )
     return 0

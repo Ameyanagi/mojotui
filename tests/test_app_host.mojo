@@ -297,6 +297,17 @@ def test_host_schedule_uses_independent_nearest_deadlines() raises:
     assert_equal(schedule.poll_timeout_ms(100_000_000, 1_000, True), 0)
 
 
+def test_host_schedule_does_not_tick_unless_requested() raises:
+    var schedule = HostSchedule()
+    schedule.start(0)
+    assert_false(schedule.tick_due(Int.MAX))
+    assert_false(schedule.consume_tick(Int.MAX))
+    assert_equal(schedule.poll_timeout_ms(0, 1_000), 1_000)
+
+    schedule.request_frame(0)
+    assert_equal(schedule.poll_timeout_ms(0, 1_000), 16)
+
+
 def test_tick_and_resize_messages_coalesce_to_latest_values() raises:
     var host = ApplicationHost(
         HostAdapter(),

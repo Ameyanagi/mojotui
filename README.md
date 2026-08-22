@@ -47,6 +47,7 @@ pixi install --locked
 pixi run check
 pixi run dashboard
 pixi run editor -- notes.txt
+pixi run virtual-list
 ```
 
 Run your own file against the checkout with:
@@ -63,6 +64,11 @@ Ctrl-Z/Ctrl-Y undo and redo, and terminal bracketed paste becomes one editor
 transaction. Running `pixi run editor` without a path opens an in-memory
 buffer. See [the editor example guide](docs/editor-example.md) for controls,
 architecture, and headless testing.
+
+The virtual-list example navigates 50,000 logical rows without constructing
+50,000 rich-text values. Home/End and Page Up/Page Down demonstrate distant
+viewport jumps, with page size derived from the live terminal viewport; `q` or
+Escape exits.
 
 `pixi run check` runs the Mojo tests, builds the executable fixtures, exercises
 terminal restoration through a PTY, verifies formatting, compiles with
@@ -107,7 +113,8 @@ The repository currently includes:
   colors, directly renderable rich text, layout, and ANSI diffs;
 - full-screen, inline, headless, and POSIX terminal support;
 - wrapped/scrolled paragraphs, configurable blocks, multiline lists and tables,
-  fill, tabs, gauges, scrollbars, forms, and an editor widget;
+  a lazy `VirtualList` for large result sets, fill, tabs, gauges, scrollbars,
+  forms, and an editor widget;
 - typed application state, effects, subscriptions, focus, and keymaps;
 - a lifecycle-safe typed host for fullscreen or inline applications;
 - a piece-table editor with multi-selection undo, file services, controllers,

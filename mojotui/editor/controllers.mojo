@@ -254,9 +254,10 @@ def vim_insert_keymap() raises -> Keymap[EditorControllerAction]:
 def text_input_action(
     key: KeyEvent, accepts_text: Bool = True
 ) -> Optional[EditorControllerAction]:
-    """Translate unmodified character input after keymap resolution misses."""
+    """Translate activating unmodified text after keymap resolution misses."""
     if (
         accepts_text
+        and key.is_activation()
         and key.code == KeyEvent.CHARACTER
         and key.modifiers == KeyEvent.NO_MODIFIERS
         and key.text != ""

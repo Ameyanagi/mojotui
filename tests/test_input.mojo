@@ -25,6 +25,12 @@ def key(var event: InputEvent) raises -> KeyEvent:
     return event[KeyEvent].copy()
 
 
+def test_key_activation_includes_press_and_repeat_but_not_release() raises:
+    assert_true(KeyEvent.character("x").is_activation())
+    assert_true(KeyEvent.character("x", kind=KeyEvent.REPEAT).is_activation())
+    assert_false(KeyEvent.character("x", kind=KeyEvent.RELEASE).is_activation())
+
+
 def test_plain_and_combined_keys() raises:
     var parser = InputParser()
     var events = parser.feed(bytes2(0x61, 0x62))

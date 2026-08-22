@@ -177,6 +177,10 @@ struct KeyEvent(Copyable):
             and self.text == text
         )
 
+    def is_activation(self) -> Bool:
+        """Return whether this press or repeat should activate a control."""
+        return self.kind == Self.PRESS or self.kind == Self.REPEAT
+
 
 struct PasteEvent(Copyable):
     """Text received between bracketed-paste delimiters."""
