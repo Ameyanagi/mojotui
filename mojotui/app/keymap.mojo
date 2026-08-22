@@ -230,6 +230,26 @@ struct Keymap[A: Copyable & Deinitable](Copyable):
         state.deadline_ns = self._deadline(now_ns)
         return KeyResolution(actions^, pending=True, consumed=True)
 
+    def resolve(
+        self,
+        mut state: KeymapState[Self.A],
+        event: KeyEvent,
+        context: StringSlice,
+        now_ns: Int,
+    ) -> KeyResolution[Self.A]:
+        """Resolve a press or repeat while ignoring key-release reports.
+
+        A release never fires a binding. It preserves a pending sequence in the
+        same context, but a context change clears that sequence before the
+        release is ignored. Callers with synthetic semantic chords can continue
+        using the `KeyChord` overload.
+        """
+        if state.context != context:
+            state.clear()
+        if not event.is_activation():
+            return KeyResolution[Self.A](pending=len(state.pending) > 0)
+        return self.resolve(state, KeyChord.from_event(event), context, now_ns)
+
     def flush(
         self, mut state: KeymapState[Self.A], now_ns: Int
     ) -> KeyResolution[Self.A]:

@@ -40,6 +40,12 @@ def test_rect_uses_half_open_bounds() raises:
     assert_false(area.contains(Point(5, 5)))
 
 
+def test_buffer_cell_error_echoes_point_and_area() raises:
+    var buffer = Buffer(Rect(3, 4, 2, 1))
+    with assert_raises(contains="point (2, 4) is outside buffer area Rect(3, 4, 2, 1)"):
+        _ = buffer.cell(Point(2, 4))
+
+
 def test_rect_intersection() raises:
     var overlap = Rect(0, 0, 5, 4).intersection(Rect(3, 2, 5, 5))
     assert_equal(overlap.x, 3)
@@ -157,8 +163,18 @@ def test_buffer_differences_are_row_major_and_include_both_cells() raises:
 
 
 def test_buffer_differences_reject_mismatched_areas() raises:
-    with assert_raises(contains="different areas"):
+    with assert_raises(
+        contains=(
+            "cannot compare buffers with different areas; got"
+            " self=Rect(0, 0, 1, 1), other=Rect(0, 0, 2, 1)"
+        )
+    ):
         _ = Buffer(Rect(0, 0, 1, 1)).differences(Buffer(Rect(0, 0, 2, 1)))
+
+
+def test_color_index_rejects_out_of_range_values() raises:
+    with assert_raises(contains="color index must be within [0, 255]; got 300"):
+        _ = Color.indexed(300)
 
 
 def test_style_patches_preserve_unspecified_fields_and_compose() raises:
@@ -299,7 +315,7 @@ def test_cell_from_grapheme_uses_unicode_width() raises:
 
 
 def test_cell_from_grapheme_rejects_multiple_graphemes() raises:
-    with assert_raises(contains="exactly one grapheme"):
+    with assert_raises(contains='cell symbol must be exactly one grapheme; got "ab"'):
         _ = Cell.from_grapheme("ab")
 
 

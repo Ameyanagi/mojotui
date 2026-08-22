@@ -232,6 +232,8 @@ var host = TerminalApplicationHost(
 incomplete-Escape, frame, or runtime-adapter deadline. `RuntimeAdapter` has
 default `next_deadline_ns()` and `on_deadline(now_ns)` hooks for adapters that
 own timers. Existing adapters need no methods when they have no deadline.
+Application ticks are disabled by default; pass a positive `tick_interval_ms`
+when `on_tick()` drives application behavior.
 
 The host now retains completion batches that do not fit the bounded queue,
 processes at most `max_messages_per_step` in one turn, and reconciles

@@ -16,7 +16,9 @@ struct ControlFlow(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 1:
-            raise Error("invalid application control flow")
+            raise Error(
+                String("application control flow must be within [0, 1]; got ", value)
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:

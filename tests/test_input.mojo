@@ -25,6 +25,12 @@ def key(var event: InputEvent) raises -> KeyEvent:
     return event[KeyEvent].copy()
 
 
+def test_key_activation_includes_press_and_repeat_but_not_release() raises:
+    assert_true(KeyEvent.character("x").is_activation())
+    assert_true(KeyEvent.character("x", kind=KeyEvent.REPEAT).is_activation())
+    assert_false(KeyEvent.character("x", kind=KeyEvent.RELEASE).is_activation())
+
+
 def test_plain_and_combined_keys() raises:
     var parser = InputParser()
     var events = parser.feed(bytes2(0x61, 0x62))
@@ -33,6 +39,12 @@ def test_plain_and_combined_keys() raises:
     assert_equal(first.text, "a")
     assert_true(first.kind == KeyEvent.PRESS)
     assert_equal(key(events[1].copy()).text, "b")
+
+
+def test_key_event_is_char_requires_matching_press_character() raises:
+    assert_true(KeyEvent.character("q").is_char("q"))
+    assert_false(KeyEvent.character("q", kind=KeyEvent.RELEASE).is_char("q"))
+    assert_false(KeyEvent(KeyEvent.ENTER, "q").is_char("q"))
 
 
 def test_fragmented_arrow_sequence() raises:

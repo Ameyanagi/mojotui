@@ -114,7 +114,16 @@ struct TerminalSession(Movable):
         options: SessionOptions = SessionOptions(),
     ) raises:
         if not FileDescriptor(output_descriptor).isatty():
-            raise Error("terminal output descriptor is not a TTY")
+            raise Error(
+                String(
+                    "output descriptor ",
+                    output_descriptor,
+                    (
+                        " is not an interactive terminal; run from a TTY, or use"
+                        " HeadlessBackend or InlineBackend for non-interactive output"
+                    ),
+                )
+            )
         self.input_descriptor = input_descriptor
         self.output_descriptor = output_descriptor
         self.options = options.copy()

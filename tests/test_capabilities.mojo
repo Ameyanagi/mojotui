@@ -18,28 +18,37 @@ from mojotui import (
 
 
 def test_capability_discriminants_are_validated() raises:
-    with assert_raises(contains="invalid terminal color profile"):
+    with assert_raises(contains="terminal color profile must be within [0, 3]; got 4"):
         _ = ColorProfile(4)
-    with assert_raises(contains="invalid terminal appearance"):
+    with assert_raises(contains="terminal appearance must be within [0, 2]; got 3"):
         _ = TerminalAppearance(3)
 
 
 def test_profiled_color_rejects_values_unsupported_by_each_profile() raises:
-    with assert_raises(contains="monochrome fallback"):
+    with assert_raises(
+        contains="monochrome fallback must use the default color; got color index 7"
+    ):
         _ = ProfiledColor(
             Color.indexed(7),
             Color.indexed(7),
             Color.indexed(7),
             Color.rgb(255, 255, 255),
         )
-    with assert_raises(contains="ANSI-16 fallback"):
+    with assert_raises(
+        contains=(
+            "ANSI-16 fallback must be default or indexed 0 through 15;"
+            " got color index 16"
+        )
+    ):
         _ = ProfiledColor(
             Color.default(),
             Color.indexed(16),
             Color.indexed(16),
             Color.rgb(0, 95, 0),
         )
-    with assert_raises(contains="ANSI-256 fallback"):
+    with assert_raises(
+        contains="ANSI-256 fallback must be default or indexed; got an RGB color"
+    ):
         _ = ProfiledColor(
             Color.default(),
             Color.indexed(2),

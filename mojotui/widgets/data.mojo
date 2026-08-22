@@ -18,13 +18,13 @@ struct Ratio(Copyable, ImplicitlyCopyable):
 
     def __init__(out self, value: Float64) raises:
         if value != value or value < 0.0 or value > 1.0:
-            raise Error("ratio must be finite and between zero and one")
+            raise Error(String("ratio must be finite and within [0, 1]; got ", value))
         self._value = value
 
     @staticmethod
     def percent(value: Int) raises -> Self:
         if value < 0 or value > 100:
-            raise Error("percentage must be between zero and one hundred")
+            raise Error(String("percent must be within [0, 100]; got ", value))
         return Self(Float64(value) / 100.0)
 
     def value(self) -> Float64:

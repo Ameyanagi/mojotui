@@ -42,11 +42,7 @@ struct KeyCode(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 26:
-            raise Error(
-                "invalid key code: argument 'value' was ",
-                String(value),
-                "; accepted range is 0..26",
-            )
+            raise Error(String("key code must be within [0, 26]; got ", value))
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -68,7 +64,7 @@ struct KeyModifiers(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, bits: Int) raises:
         if bits < 0 or (bits & ~7) != 0:
-            raise Error("invalid key modifier flags")
+            raise Error(String("key modifier flags must be within [0, 7]; got ", bits))
         self._bits = bits
 
     def __eq__(self, other: Self) -> Bool:
@@ -173,6 +169,18 @@ struct KeyEvent(Copyable):
     ) -> Self:
         return Self(code, modifiers=modifiers, kind=kind)
 
+    def is_char(self, text: StringSlice) -> Bool:
+        """True for a press of the given character key (kind, code, and text)."""
+        return (
+            self.kind == KeyEventKind.PRESS
+            and self.code == KeyCode.CHARACTER
+            and self.text == text
+        )
+
+    def is_activation(self) -> Bool:
+        """Return whether this press or repeat should activate a control."""
+        return self.kind == Self.PRESS or self.kind == Self.REPEAT
+
 
 struct PasteEvent(Copyable):
     """Text received between bracketed-paste delimiters."""
@@ -208,7 +216,7 @@ struct MouseKind(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 4:
-            raise Error("invalid mouse event kind")
+            raise Error(String("mouse event kind must be within [0, 4]; got ", value))
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -229,7 +237,7 @@ struct MouseButton(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 2:
-            raise Error("invalid mouse button")
+            raise Error(String("mouse button must be within [0, 2]; got ", value))
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:

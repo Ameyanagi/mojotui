@@ -26,6 +26,7 @@ from .app import (
     OperationId,
     OperationResult,
     OperationTracker,
+    NoopAdapter,
     RuntimeAdapter,
     RuntimeScope,
     Subscription,
@@ -37,6 +38,7 @@ from .app import (
     accept_operation_result,
     dispatch,
     render_application,
+    run,
     subscriptions,
 )
 from .core import (
@@ -191,6 +193,8 @@ from .widgets import (
     LineGauge,
     List,
     ListItem,
+    ListLineProvider,
+    ListRenderContext,
     ListState,
     Marker,
     Paragraph,
@@ -207,4 +211,5 @@ from .widgets import (
     TableState,
     Tabs,
     TitlePosition,
+    VirtualList,
 )

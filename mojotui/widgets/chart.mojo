@@ -194,7 +194,7 @@ def _default_dataset_style(index: Int, style: Style) -> Style:
         color = 4
     elif cycle_index == 5:
         color = 1
-    return Style(foreground=Color.indexed(color))
+    return Style(foreground=Color(Color.INDEXED, color))
 
 
 def _braille_bit(dot_x: Int, dot_y: Int) -> Int:

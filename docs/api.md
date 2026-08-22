@@ -9,7 +9,7 @@ application wants narrower imports.
 | Cells and styling | `Cell`, `Color`, `ColorKind`, `ColorProfile`, `TerminalAppearance`, `TerminalCapabilities`, `ProfiledColor`, `AdaptiveColor`, `ModifierSet`, `Style`, `StylePatch`, `Buffer`, `BufferWrite`, `BufferDifference` |
 | Rich text | `Span`, `Line`, `Text`, `render_line`, `render_text`; all three values implement `Widget` |
 | Stateless widgets | `Block`, `BorderType`, `Padding`, `TitlePosition`, `Paragraph`, `Fill`, `Ratio`, `Gauge`, `LineGauge`, `Sparkline`, `BarChart`, `Chart`, `Axis`, `Dataset`, `GraphKind`, `Marker`, `Tabs`, `Clear` |
-| Stateful widgets | `List`, `HighlightSpacing`, `Table`, `TableSelection`, `Scrollbar`, `ScrollbarSymbols`, `Editor`, `TextInput`, `TextArea` and their state types |
+| Stateful widgets | `List`, `VirtualList`, `ListLineProvider`, `ListRenderContext`, `HighlightSpacing`, `Table`, `TableSelection`, `Scrollbar`, `ScrollbarSymbols`, `Editor`, `TextInput`, `TextArea` and their state types |
 | Render transactions | `Frame`, `CompletedFrame`, `Terminal` |
 | Terminal output | `FramePatch`, `AnsiBackend`, `InlineBackend`, `HeadlessBackend`, `detect_terminal_capabilities`, `terminal_capabilities_from_environment` |
 | Terminal lifecycle | `TerminalSession`, `SessionOptions`, `MouseCapture` |
@@ -17,10 +17,20 @@ application wants narrower imports.
 | Polling | `PosixReactor`, `ReactorPoll` |
 | Application state | `Application`, `InitResult`, `ApplicationRuntime`, `UpdateResult`, `ControlFlow`, `MessageQueue` |
 | Effects | `Command`, `Subscription`, `OperationTracker`, `CancellationToken` |
-| Runtime bridge and host | `RuntimeAdapter`, `RuntimeScope`, `ApplicationHost`, `TerminalApplicationHost`, `HostSchedule`, `HostStep` |
+| Runtime bridge and host | `RuntimeAdapter`, `NoopAdapter`, `RuntimeScope`, `ApplicationHost`, `TerminalApplicationHost`, `HostSchedule`, `HostStep`, `run` |
 | Focus and input mapping | `FocusManager`, `Keymap`, `KeyChord`, `HitMap` |
 | Editor data | `Document`, `SelectionSet`, `EditorEngine`, `EditorCommand`, `EditorCommandKind`, `ControllerActionKind`, `WrapMode`, `LineEnding` |
 | Editor services | `LocalFileService`, `Clipboard`, `MemoryClipboard`, `Osc52Clipboard` |
+
+## List container alias
+
+The widget `List` shares its name with `std.collections.List`. When both are
+needed, alias the standard library container at import, as
+`examples/dashboard.mojo` does:
+
+```mojo
+from std.collections import List as MojoList
+```
 
 Functions that can fail declare `raises`. The compiler checks trait constraints
 and concrete associated types before execution. Semantic choices use nominal
@@ -38,6 +48,8 @@ chainable `bold()`, `italic()`, `dim()`, `underlined()`, `reversed()`,
 `crossed_out()`, `fg()`, and `bg()` shorthand. `Buffer.set_string()` returns
 `BufferWrite`, so callers can observe clipping; it never writes half of a wide
 grapheme.
+`Color.BLACK` through `Color.WHITE` and `Color.BRIGHT_BLACK` through
+`Color.BRIGHT_WHITE` name the 16 standard ANSI palette entries.
 `Buffer.resize()` retains only complete cell footprints and `Buffer.merge()`
 overlays one complete buffer after growing to their union.
 `Buffer.differences()` returns row-major `BufferDifference` values containing
@@ -99,6 +111,20 @@ highlight spacing. Tables support multiline row heights, headers, footers,
 scroll padding, and row/column/cell selection. `Fill` accepts exactly one
 single-column grapheme so repeated painting cannot corrupt wide-cell state.
 
+For a large uniform one-row collection, implement `ListLineProvider` and render
+`VirtualList(provider^)` with the same `ListState` used by `List`. Construction
+move-owns the provider, so an application-owned dataset is transferred rather
+than deep-copied; a temporary provider needs no `^`. The provider's
+`item_count()` is the logical size; `line(context)` is called at most once for
+each visible row and never for an off-screen row. A zero-width content region
+does not request a line. `ListRenderContext` carries the
+logical index, item count, viewport offset/height/row, optional selection, and
+the derived `selected` flag; invalid collection, viewport, and selection bounds
+raise at construction. This makes cursor-sensitive highlights and previews
+possible without storing one `Line` or `ListItem` per result. Static generic
+dispatch preserves Mojotui's no-type-erasure contract. `VirtualList` is
+intentionally one row per item; retain `List` for multiline items.
+
 `Gauge` and `LineGauge` accept `Ratio`, whose constructor rejects NaN and values
 outside zero through one; `Ratio.percent()` validates an integer percentage.
 Custom scrollbars accept a `ScrollbarSymbols` pair whose track and thumb are
@@ -115,8 +141,8 @@ fullscreen or inline-compatible behavior, while `MouseCapture` selects clicks,
 drag tracking, all motion, or no mouse capture. `KeyCode.F1` through
 `KeyCode.F12` represent terminal function keys. A `RuntimeAdapter` declares one
 `ApplicationType`, so its effect inputs and message outputs are proven to match
-the application at compile time. `HostSchedule` independently tracks ticks,
-Escape resolution, frame cadence, and optional adapter deadlines. Host turns
+the application at compile time. `HostSchedule` independently tracks opt-in
+ticks, Escape resolution, frame cadence, and optional adapter deadlines. Host turns
 retain lossless adapter backlogs, process a bounded message batch, reconcile
 subscriptions once, and coalesce only latest-value tick and resize messages.
 
@@ -124,7 +150,11 @@ Kitty keyboard disambiguation and event-type reporting are progressive session
 enhancements enabled by default through `SessionOptions.keyboard_enhancement`.
 Supporting terminals report `KeyEvent.kind` as press, repeat, or release and
 avoid legacy Escape ambiguity; terminals without the protocol harmlessly ignore
-the session push and pop sequences.
+the session push and pop sequences. Pass a `KeyEvent` directly to
+`Keymap.resolve` to accept presses and repeats while ignoring releases without
+disturbing an in-progress key sequence. The `KeyChord` overload remains useful
+for synthetic semantic input; non-keymap control handlers can use
+`KeyEvent.is_activation()` directly.
 
 Every backend implements `capabilities()`, and `Terminal.capabilities()`
 forwards that configured value. `HeadlessBackend` defaults deterministically to

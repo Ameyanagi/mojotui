@@ -45,7 +45,13 @@ struct Cell(Copyable):
     ) raises -> Self:
         """Construct a cell after validating and measuring one grapheme."""
         if StringSlice(symbol).count_graphemes() != 1:
-            raise Error("cell symbol must contain exactly one grapheme")
+            raise Error(
+                String(
+                    'cell symbol must be exactly one grapheme; got "',
+                    symbol,
+                    '"',
+                )
+            )
         var width = grapheme_width(symbol, ambiguous_is_wide)
         return Self(symbol^, width, style=style)
 

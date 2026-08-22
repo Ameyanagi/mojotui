@@ -17,6 +17,7 @@ comptime _POLLERR = c_short(0x0008)
 comptime _POLLHUP = c_short(0x0010)
 comptime _POLLNVAL = c_short(0x0020)
 comptime _EINTR = c_int(4)
+comptime _ENOTTY = 25
 comptime _nfds_t = c_ulong if CompilationTarget.is_linux() else c_uint
 comptime _TIOCGWINSZ = (
     c_ulong(0x5413) if CompilationTarget.is_linux() else c_ulong(0x40087468)
@@ -89,7 +90,16 @@ struct PosixTerminalMode(Movable):
         self.active = False
 
         if not FileDescriptor(descriptor).isatty():
-            raise Error("raw terminal input descriptor is not a TTY")
+            raise Error(
+                String(
+                    "input descriptor ",
+                    descriptor,
+                    (
+                        " is not an interactive terminal; run from a TTY, or drive the"
+                        " application with HeadlessBackend for non-interactive use"
+                    ),
+                )
+            )
 
         # SAFETY: `saved` is aligned, initialized, live for the call, and larger
         # than `struct termios` on every supported target. libc writes only its
@@ -159,7 +169,26 @@ def terminal_size(descriptor: Int) raises -> PosixTerminalSize:
         c_int(descriptor), _TIOCGWINSZ, Pointer(to=values[0])
     )
     if status != 0:
-        raise Error("terminal-size query failed with errno ", String(get_errno().value))
+        var error_number = get_errno().value
+        if error_number == _ENOTTY:
+            raise Error(
+                String(
+                    "terminal-size query failed: descriptor ",
+                    descriptor,
+                    (
+                        " is not an interactive terminal (ENOTTY); run from a TTY, or"
+                        " use HeadlessBackend for non-interactive output"
+                    ),
+                )
+            )
+        raise Error(
+            String(
+                "terminal-size query failed for descriptor ",
+                descriptor,
+                " with errno ",
+                error_number,
+            )
+        )
     return PosixTerminalSize(Int(values[1]), Int(values[0]))
 
 

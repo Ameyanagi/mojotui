@@ -5,11 +5,13 @@ from std.collections import List, Optional
 from ..core.geometry import Size
 from ..event.input import InputEvent, InputParser
 from ..event.reactor import PosixReactor
-from ..terminal.backend import Backend, Terminal
+from ..terminal.backend import AnsiBackend, Backend, Terminal
+from ..terminal.capabilities import detect_terminal_capabilities
 from ..terminal.session import SessionOptions, TerminalSession
-from .adapter import RuntimeAdapter, RuntimeScope
+from .adapter import NoopAdapter, RuntimeAdapter, RuntimeScope
+from .contracts import Application
 from .queue import EnqueueResult
-from .runtime import ApplicationRuntime, Clock
+from .runtime import ApplicationRuntime, Clock, SystemClock
 
 
 def _saturating_add(left: Int, right: Int) -> Int:
@@ -41,13 +43,11 @@ struct HostSchedule(Copyable):
 
     def __init__(
         out self,
-        tick_interval_ms: Int = 16,
+        tick_interval_ms: Int = 0,
         escape_timeout_ms: Int = 25,
         frame_interval_ms: Int = 16,
     ):
-        self.tick_interval_ns = max(
-            _milliseconds_to_nanoseconds(tick_interval_ms), 1_000_000
-        )
+        self.tick_interval_ns = _milliseconds_to_nanoseconds(tick_interval_ms)
         self.escape_timeout_ns = max(
             _milliseconds_to_nanoseconds(escape_timeout_ms), 1_000_000
         )
@@ -65,7 +65,10 @@ struct HostSchedule(Copyable):
         if self.started:
             return
         var now = max(now_ns, 0)
-        self.next_tick_ns = _saturating_add(now, self.tick_interval_ns)
+        if self.tick_interval_ns > 0:
+            self.next_tick_ns = _saturating_add(now, self.tick_interval_ns)
+        else:
+            self.next_tick_ns = Int.MAX
         self.last_frame_ns = now
         self.started = True
 
@@ -95,7 +98,9 @@ struct HostSchedule(Copyable):
             self.runtime_deadline_ns = None
 
     def tick_due(self, now_ns: Int) -> Bool:
-        return self.started and now_ns >= self.next_tick_ns
+        return (
+            self.started and self.tick_interval_ns > 0 and now_ns >= self.next_tick_ns
+        )
 
     def consume_tick(mut self, now_ns: Int) -> Bool:
         if not self.tick_due(now_ns):
@@ -118,14 +123,22 @@ struct HostSchedule(Copyable):
             return now_ns >= self.runtime_deadline_ns.value()
         return False
 
-    def _nearest_deadline(self) -> Int:
-        var nearest = self.next_tick_ns
+    def _nearest_deadline(self) -> Optional[Int]:
+        var nearest: Optional[Int] = None
+        if self.tick_interval_ns > 0:
+            nearest = self.next_tick_ns
         if self.escape_deadline_ns:
-            nearest = min(nearest, self.escape_deadline_ns.value())
+            nearest = min(
+                nearest.value(), self.escape_deadline_ns.value()
+            ) if nearest else self.escape_deadline_ns.value()
         if self.frame_deadline_ns:
-            nearest = min(nearest, self.frame_deadline_ns.value())
+            nearest = min(
+                nearest.value(), self.frame_deadline_ns.value()
+            ) if nearest else self.frame_deadline_ns.value()
         if self.runtime_deadline_ns:
-            nearest = min(nearest, self.runtime_deadline_ns.value())
+            nearest = min(
+                nearest.value(), self.runtime_deadline_ns.value()
+            ) if nearest else self.runtime_deadline_ns.value()
         return nearest
 
     def poll_timeout_ms(
@@ -136,7 +149,10 @@ struct HostSchedule(Copyable):
     ) -> Int:
         if immediate_work:
             return 0
-        var remaining = self._nearest_deadline() - max(now_ns, 0)
+        var nearest = self._nearest_deadline()
+        if not nearest:
+            return max(maximum_wait_ms, 0)
+        var remaining = nearest.value() - max(now_ns, 0)
         if remaining <= 0:
             return 0
         var milliseconds = remaining // 1_000_000
@@ -346,7 +362,7 @@ struct TerminalApplicationHost[
         input_descriptor: Int = 0,
         output_descriptor: Int = 1,
         wakeup_descriptor: Int = -1,
-        tick_interval_ms: Int = 16,
+        tick_interval_ms: Int = 0,
         escape_timeout_ms: Int = 25,
         frame_interval_ms: Int = 16,
         maximum_poll_ms: Int = 1_000,
@@ -491,3 +507,22 @@ struct TerminalApplicationHost[
     def __deinit__(deinit self):
         # Owned members provide non-raising fallback cleanup during unwinding.
         pass
+
+
+def run[
+    A: Application
+](
+    var application: A,
+    options: SessionOptions = SessionOptions(),
+    tick_interval_ms: Int = 16,
+) raises:
+    """Run a typed application fullscreen with no background runtime."""
+    var host = TerminalApplicationHost(
+        NoopAdapter[A](),
+        application^,
+        SystemClock(),
+        AnsiBackend.from_terminal(capabilities=detect_terminal_capabilities()),
+        options=options,
+        tick_interval_ms=tick_interval_ms,
+    )
+    host.run()

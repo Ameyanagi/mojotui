@@ -120,6 +120,8 @@ def _reset_selection(mut model: FuzzyModel):
 
 
 def _handle_key(mut model: FuzzyModel, key: KeyEvent) -> Bool:
+    if not key.is_activation():
+        return False
     var matches = _matches(model.query)
     if key.code == KeyEvent.DOWN:
         model.selection.next(len(matches))
@@ -170,6 +172,8 @@ struct FuzzyApplication(Application, Copyable):
     def update(
         mut self, mut model: Self.Model, var key: Self.Message
     ) raises -> UpdateResult[Self.Effect]:
+        if not key.is_activation():
+            return UpdateResult[Self.Effect].unchanged()
         if key.code == KeyEvent.ESCAPE or (
             key.code == KeyEvent.CHARACTER
             and key.text == "c"
@@ -202,7 +206,9 @@ struct FuzzyApplication(Application, Copyable):
         self, model: Self.Model, var event: InputEvent
     ) raises -> Optional[Self.Message]:
         if event.isa[KeyEvent]():
-            return event[KeyEvent].copy()
+            var key = event[KeyEvent].copy()
+            if key.is_activation():
+                return key^
         return None
 
 

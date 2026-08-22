@@ -122,7 +122,12 @@ def test_full_redraw_patch_is_row_major_and_skips_blank_continuations() raises:
 def test_mismatched_areas_are_rejected() raises:
     var before = Buffer(Rect(0, 0, 1, 1))
     var after = Buffer(Rect(0, 0, 2, 1))
-    with assert_raises(contains="equal areas"):
+    with assert_raises(
+        contains=(
+            "frame diff buffers must have equal areas; got"
+            " before=Rect(0, 0, 1, 1), after=Rect(0, 0, 2, 1)"
+        )
+    ):
         _ = encode_ansi_diff(before, after)
 
 
