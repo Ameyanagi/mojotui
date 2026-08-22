@@ -25,7 +25,7 @@ struct WrapMode(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 1:
-            raise Error("invalid editor wrap mode")
+            raise Error(String("editor wrap mode must be within [0, 1]; got ", value))
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:

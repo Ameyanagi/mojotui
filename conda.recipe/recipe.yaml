@@ -1,0 +1,45 @@
+context:
+  version: "0.1.0"
+
+package:
+  name: mojo-mojotui
+  version: ${{ version }}
+
+source:
+  path: ..
+
+build:
+  number: 0
+  script:
+    - mojo precompile -I ${{ PREFIX }}/lib/mojo mojotui -o ${{ PREFIX }}/lib/mojo/mojotui.mojoc
+
+requirements:
+  build:
+    - mojo-compiler =1.0.0
+    - mojo-moji
+  host:
+    - mojo-compiler =1.0.0
+    - mojo-moji
+  run:
+    - ${{ pin_compatible('mojo-compiler') }}
+    - mojo-moji
+
+tests:
+  - script:
+      - mojo run test_package.mojo
+    files:
+      recipe:
+        - test_package.mojo
+
+about:
+  homepage: https://github.com/Ameyanagi/mojotui
+  repository: https://github.com/Ameyanagi/mojotui
+  license: MIT OR Apache-2.0
+  license_file:
+    - LICENSE-MIT
+    - LICENSE-APACHE
+  summary: A terminal user-interface library for Mojo.
+
+extra:
+  maintainers:
+    - Ameyanagi

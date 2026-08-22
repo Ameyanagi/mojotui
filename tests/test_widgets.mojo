@@ -1,3 +1,4 @@
+from std.collections import List as MojoList
 from std.testing import (
     TestSuite,
     assert_equal,
@@ -7,6 +8,7 @@ from std.testing import (
 )
 
 from mojotui import (
+    BarChart,
     Block,
     BorderType,
     Buffer,
@@ -20,6 +22,8 @@ from mojotui import (
     LineGauge,
     List,
     ListItem,
+    ListLineProvider,
+    ListRenderContext,
     ListState,
     Paragraph,
     Padding,
@@ -37,11 +41,63 @@ from mojotui import (
     TableState,
     Tabs,
     Text,
+    VirtualList,
     TitlePosition,
     Alignment,
     Constraint,
     render_stateful_widget,
 )
+
+
+struct CheckedLargeProvider(Copyable, ListLineProvider):
+    var count: Int
+    var expected_offset: Int
+    var expected_height: Int
+    var expected_selection: Int
+
+    def __init__(
+        out self,
+        count: Int,
+        expected_offset: Int,
+        expected_height: Int,
+        expected_selection: Int,
+    ):
+        self.count = count
+        self.expected_offset = expected_offset
+        self.expected_height = expected_height
+        self.expected_selection = expected_selection
+
+    def item_count(self) -> Int:
+        return self.count
+
+    def line(self, context: ListRenderContext) raises -> Line:
+        if context.viewport_offset != self.expected_offset:
+            raise Error("provider observed the wrong viewport offset")
+        if context.viewport_height != self.expected_height:
+            raise Error("provider observed the wrong viewport height")
+        if context.index != context.viewport_offset + context.viewport_row:
+            raise Error("provider observed a non-visible logical row")
+        if (
+            context.selection
+            and Int(context.selection.value()) != self.expected_selection
+        ):
+            raise Error("provider observed the wrong list cursor")
+        if context.selected != (context.index == self.expected_selection):
+            raise Error("provider observed inconsistent selection state")
+        return Line.from_text(String("row ", context.index))
+
+
+struct OwnedRowsProvider(Copyable, ListLineProvider):
+    var rows: MojoList[String]
+
+    def __init__(out self, var rows: MojoList[String]):
+        self.rows = rows^
+
+    def item_count(self) -> Int:
+        return len(self.rows)
+
+    def line(self, context: ListRenderContext) -> Line:
+        return Line.from_text(self.rows[context.index].copy())
 
 
 def row(buffer: Buffer, y: Int) raises -> String:
@@ -65,6 +121,17 @@ def test_block_border_title_and_inner_area() raises:
     assert_equal(inner.y, 1)
     assert_equal(inner.width, 6)
     assert_equal(inner.height, 2)
+
+
+def test_block_renders_top_and_bottom_titles_without_clipping_last_character() raises:
+    var block = Block.bordered(Line.from_text("Top")).title_bottom(
+        Line.from_text("Bottom!!")
+    )
+    var area = Rect(0, 0, 10, 3)
+    var buffer = Buffer(area)
+    block.render(area, buffer)
+    assert_equal(row(buffer, 0), "┌Top─────┐")
+    assert_equal(row(buffer, 2), "└Bottom!!┘")
 
 
 def test_paragraph_wraps_inside_block() raises:
@@ -148,8 +215,20 @@ def test_fill_clips_single_column_symbol_and_style() raises:
     assert_equal(row(buffer, 1), " ... ")
     assert_true(buffer.cell({1, 1}).style.has(Style.BOLD))
 
-    with assert_raises(contains="exactly one column"):
+    with assert_raises(
+        contains=(
+            "fill symbol must be exactly one grapheme occupying one terminal"
+            ' column; got "界"'
+        )
+    ):
         _ = Fill("界")
+    with assert_raises(
+        contains=(
+            "fill symbol must be exactly one grapheme occupying one terminal"
+            ' column; got "ab"'
+        )
+    ):
+        _ = Fill("ab")
 
 
 def test_gauge_and_line_gauge_snapshots() raises:
@@ -173,6 +252,78 @@ def test_sparkline_uses_newest_visible_samples() raises:
     var area = buffer.area.copy()
     sparkline.render(area, buffer)
     assert_equal(row(buffer, 0), "▂▃▄█")
+
+
+def test_bar_chart_full_height_and_partial_eighth_bars() raises:
+    var buffer = Buffer(Rect(0, 0, 3, 2))
+    var area = buffer.area.copy()
+    var values: MojoList[Float64] = [8.0, 4.0, 1.0]
+    BarChart(values, gap=0, maximum=8.0).render(area, buffer)
+    assert_equal(row(buffer, 0), "█  ")
+    assert_equal(row(buffer, 1), "██▂")
+
+
+def test_bar_chart_wide_bars_gaps_and_labels() raises:
+    var buffer = Buffer(Rect(0, 0, 5, 3))
+    var area = buffer.area.copy()
+    var values: MojoList[Float64] = [8.0, 4.0]
+    var labels: MojoList[String] = ["A", "B"]
+    BarChart(
+        values,
+        labels=labels,
+        bar_width=2,
+        gap=1,
+        maximum=8.0,
+    ).render(area, buffer)
+    assert_equal(row(buffer, 0), "██   ")
+    assert_equal(row(buffer, 1), "██ ██")
+    assert_equal(row(buffer, 2), "A  B ")
+
+
+def test_bar_chart_skips_a_partially_clipped_bar() raises:
+    var buffer = Buffer(Rect(0, 0, 4, 1))
+    var area = buffer.area.copy()
+    var values: MojoList[Float64] = [1.0, 1.0]
+    BarChart(values, bar_width=2, gap=1, maximum=1.0).render(area, buffer)
+    assert_equal(row(buffer, 0), "██  ")
+
+
+def test_bar_chart_defaults_maximum_and_handles_all_zero_values() raises:
+    var scaled = Buffer(Rect(0, 0, 2, 1))
+    var scaled_area = scaled.area.copy()
+    var scaled_values: MojoList[Float64] = [2.0, 1.0]
+    BarChart(scaled_values, gap=0).render(scaled_area, scaled)
+    assert_equal(row(scaled, 0), "█▄")
+
+    var zero = Buffer(Rect(0, 0, 2, 1))
+    var zero_area = zero.area.copy()
+    var zero_values: MojoList[Float64] = [0.0, 0.0]
+    BarChart(zero_values, gap=0).render(zero_area, zero)
+    assert_equal(row(zero, 0), "  ")
+
+
+def test_bar_chart_rejects_invalid_configuration() raises:
+    var nan_values: MojoList[Float64] = [Float64("nan")]
+    with assert_raises(
+        contains="values[0] must be non-NaN and within [0, inf]; got nan"
+    ):
+        _ = BarChart(nan_values)
+    var negative_values: MojoList[Float64] = [-1.0]
+    with assert_raises(
+        contains="values[0] must be non-NaN and within [0, inf]; got -1.0"
+    ):
+        _ = BarChart(negative_values)
+    var single_value: MojoList[Float64] = [1.0]
+    with assert_raises(contains="bar_width must be within [1, Int.MAX]; got 0"):
+        _ = BarChart(single_value, bar_width=0)
+    var mismatched_labels: MojoList[String] = ["A", "B"]
+    with assert_raises(
+        contains=(
+            "labels must be empty or match len(values); got len(labels)=2,"
+            " len(values)=1"
+        )
+    ):
+        _ = BarChart(single_value, labels=mismatched_labels)
 
 
 def test_widget_styles_are_written_to_cells() raises:
@@ -199,6 +350,92 @@ def test_list_scrolls_selection_into_visible_range() raises:
     assert_equal(row(buffer, 0), "  one   ")
     assert_equal(row(buffer, 1), "> two   ")
     assert_true(buffer.cell({0, 1}).style.has(Style.REVERSED))
+
+
+def test_long_uniform_list_jumps_directly_to_selected_viewport() raises:
+    comptime ITEM_COUNT = 2_048
+    var items = MojoList[ListItem](capacity=ITEM_COUNT)
+    for _ in range(ITEM_COUNT):
+        items.append(ListItem.from_text("item"))
+    var widget = List(items^)
+    var state = ListState(selected=UInt(ITEM_COUNT - 1))
+    var buffer = Buffer(Rect(0, 0, 8, 5))
+    var area = buffer.area.copy()
+    widget.render(area, buffer, state)
+    assert_equal(state.offset, ITEM_COUNT - 5)
+    assert_equal(row(buffer, 4), "> item  ")
+
+
+def test_virtual_list_only_requests_visible_rows_with_viewport_context() raises:
+    comptime ITEM_COUNT = 50_000
+    var widget = VirtualList(
+        CheckedLargeProvider(ITEM_COUNT, ITEM_COUNT - 5, 5, ITEM_COUNT - 1)
+    )
+    var state = ListState(selected=UInt(ITEM_COUNT - 1))
+    var buffer = Buffer(Rect(0, 0, 14, 5))
+    var area = buffer.area.copy()
+    widget.render(area, buffer, state)
+    assert_equal(state.offset, ITEM_COUNT - 5)
+    assert_equal(row(buffer, 0), "  row 49995   ")
+    assert_equal(row(buffer, 4), "> row 49999   ")
+    assert_true(buffer.cell({0, 4}).style.has(Style.REVERSED))
+
+
+def test_virtual_list_preserves_scroll_padding_and_empty_source() raises:
+    var padded = VirtualList(CheckedLargeProvider(10, 5, 5, 8), scroll_padding=2)
+    var padded_state = ListState(selected=UInt(8))
+    var padded_buffer = Buffer(Rect(0, 0, 10, 5))
+    var padded_area = padded_buffer.area.copy()
+    padded.render(padded_area, padded_buffer, padded_state)
+    assert_equal(padded_state.offset, 5)
+
+    var empty = VirtualList(CheckedLargeProvider(0, 0, 3, -1))
+    var empty_state = ListState(selected=UInt(7), offset=9)
+    var empty_buffer = Buffer(Rect(0, 0, 3, 3))
+    var empty_area = empty_buffer.area.copy()
+    empty.render(empty_area, empty_buffer, empty_state)
+    assert_false(empty_state.selected)
+    assert_equal(empty_state.offset, 0)
+
+    var invalid = VirtualList(CheckedLargeProvider(-1, 0, 3, -1))
+    with assert_raises(contains="provider item count must be non-negative"):
+        invalid.render(empty_area, empty_buffer, empty_state)
+
+
+def test_virtual_list_moves_owned_provider_data_and_context_rejects_bad_bounds() raises:
+    var rows: MojoList[String] = ["owned"]
+    var provider = OwnedRowsProvider(rows^)
+    var widget = VirtualList(provider^)
+    var state = ListState(selected=UInt(0))
+    var buffer = Buffer(Rect(0, 0, 8, 1))
+    var area = buffer.area.copy()
+    widget.render(area, buffer, state)
+    assert_equal(row(buffer, 0), "> owned ")
+
+    with assert_raises(contains="row is outside its viewport height"):
+        _ = ListRenderContext(1, 2, 1, 0, 1, UInt(1))
+    with assert_raises(contains="selection is outside the collection"):
+        _ = ListRenderContext(0, 1, 0, 0, 1, UInt(1))
+    with assert_raises(contains="row is outside its viewport height"):
+        _ = ListRenderContext(0, 1, 0, 0, 0, UInt(0))
+
+
+def test_list_recomputes_viewport_after_public_item_height_mutation() raises:
+    var widget = List(
+        [
+            ListItem.from_text("zero"),
+            ListItem.from_text("one"),
+            ListItem.from_text("two"),
+            ListItem.from_text("last"),
+        ]
+    )
+    widget.items[2] = ListItem(Text.raw("tall\nrow"))
+    var state = ListState(selected=UInt(3))
+    var buffer = Buffer(Rect(0, 0, 8, 3))
+    var area = buffer.area.copy()
+    widget.render(area, buffer, state)
+    assert_equal(state.offset, 2)
+    assert_equal(row(buffer, 2), "> last  ")
 
 
 def test_list_selection_patch_preserves_span_foreground() raises:
@@ -283,6 +520,69 @@ def test_table_header_columns_and_body_scroll_snapshot() raises:
     assert_true(buffer.cell({0, 2}).style.has(Style.REVERSED))
 
 
+def test_long_uniform_table_jumps_directly_to_selected_viewport() raises:
+    comptime ROW_COUNT = 2_048
+    var rows = MojoList[Row](capacity=ROW_COUNT)
+    for _ in range(ROW_COUNT):
+        rows.append(Row.from_lines([Line.from_text("row")]))
+    var table = Table(rows^, [Constraint.fill()])
+    table.rows[ROW_COUNT - 2].height = 0
+    table.rows[ROW_COUNT - 3].height = -7
+    var state = TableState(selected=UInt(ROW_COUNT - 1))
+    var buffer = Buffer(Rect(0, 0, 5, 4))
+    var area = buffer.area.copy()
+    table.render(area, buffer, state)
+    assert_equal(state.offset, ROW_COUNT - 4)
+    assert_equal(row(buffer, 3), "row  ")
+    assert_true(buffer.cell({0, 3}).style.has(Style.REVERSED))
+
+
+def test_table_normalizes_mutated_nonpositive_body_header_and_footer_heights() raises:
+    var table = Table.with_header(
+        [
+            Row.from_lines([Line.from_text("zero")]),
+            Row.from_lines([Line.from_text("one")]),
+            Row.from_lines([Line.from_text("last")]),
+        ],
+        [Constraint.fill()],
+        Row.from_lines([Line.from_text("head")]),
+    ).with_footer(Row.from_lines([Line.from_text("foot")]))
+    table.header.height = 0
+    table.footer.height = -4
+    table.rows[0].height = 0
+    table.rows[1].height = -3
+    var state = TableState(selected=UInt(2))
+    var buffer = Buffer(Rect(0, 0, 5, 4))
+    var area = buffer.area.copy()
+    table.render(area, buffer, state)
+    assert_equal(state.offset, 1)
+    assert_equal(row(buffer, 0), "head ")
+    assert_equal(row(buffer, 1), "one  ")
+    assert_equal(row(buffer, 2), "last ")
+    assert_equal(row(buffer, 3), "foot ")
+    assert_true(buffer.cell({0, 2}).style.has(Style.REVERSED))
+
+
+def test_table_recomputes_viewport_after_public_row_height_mutation() raises:
+    var table = Table(
+        [
+            Row.from_lines([Line.from_text("zero")]),
+            Row.from_lines([Line.from_text("one")]),
+            Row.from_lines([Line.from_text("two")]),
+            Row.from_lines([Line.from_text("last")]),
+        ],
+        [Constraint.fill()],
+    )
+    table.rows[2] = Row.from_lines([Line.from_text("tall")], height=2)
+    var state = TableState(selected=UInt(3))
+    var buffer = Buffer(Rect(0, 0, 5, 3))
+    var area = buffer.area.copy()
+    table.render(area, buffer, state)
+    assert_equal(state.offset, 2)
+    assert_equal(row(buffer, 2), "last ")
+    assert_true(buffer.cell({0, 2}).style.has(Style.REVERSED))
+
+
 def test_table_multiline_rows_footer_and_cell_column_selection() raises:
     var table = Table.with_header(
         [
@@ -364,12 +664,20 @@ def test_scrollbar_fills_track_when_content_fits() raises:
 
 
 def test_ratio_and_scrollbar_symbols_reject_invalid_configuration() raises:
-    with assert_raises(contains="ratio must be finite"):
+    with assert_raises(contains="ratio must be finite and within [0, 1]; got -0.1"):
         _ = Ratio(-0.1)
-    with assert_raises(contains="ratio must be finite"):
+    with assert_raises(contains="ratio must be finite and within [0, 1]; got nan"):
         _ = Ratio(Float64("nan"))
-    with assert_raises(contains="track must be exactly one terminal column"):
+    with assert_raises(contains="percent must be within [0, 100]; got 101"):
+        _ = Ratio.percent(101)
+    with assert_raises(
+        contains='scrollbar track symbol must be exactly one terminal column; got "界"'
+    ):
         _ = ScrollbarSymbols("界", "█")
+    with assert_raises(
+        contains='scrollbar thumb symbol must be exactly one terminal column; got "界"'
+    ):
+        _ = ScrollbarSymbols("│", "界")
 
 
 def main() raises:

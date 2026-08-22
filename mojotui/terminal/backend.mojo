@@ -89,9 +89,46 @@ struct Terminal[B: Backend](Movable):
         if frame.base_frame_count != self.frame_count:
             raise Error("frame was prepared from a stale terminal generation")
         if not frame.buffer.area.equals(self.previous.area):
-            raise Error("completed frame does not match terminal viewport")
+            raise Error(
+                String(
+                    "completed frame does not match terminal viewport; got frame=Rect(",
+                    frame.buffer.area.x,
+                    ", ",
+                    frame.buffer.area.y,
+                    ", ",
+                    frame.buffer.area.width,
+                    ", ",
+                    frame.buffer.area.height,
+                    "), viewport=Rect(",
+                    self.previous.area.x,
+                    ", ",
+                    self.previous.area.y,
+                    ", ",
+                    self.previous.area.width,
+                    ", ",
+                    self.previous.area.height,
+                    ")",
+                )
+            )
         if frame.cursor and not frame.buffer.area.contains(frame.cursor.value()):
-            raise Error("requested cursor is outside the completed frame")
+            var cursor = frame.cursor.value().copy()
+            raise Error(
+                String(
+                    "requested cursor is outside the completed frame; got cursor (",
+                    cursor.x,
+                    ", ",
+                    cursor.y,
+                    "), frame=Rect(",
+                    frame.buffer.area.x,
+                    ", ",
+                    frame.buffer.area.y,
+                    ", ",
+                    frame.buffer.area.width,
+                    ", ",
+                    frame.buffer.area.height,
+                    ")",
+                )
+            )
 
         var full_redraw = self.force_full_redraw
         var cursor = frame.cursor.copy()
@@ -192,7 +229,27 @@ struct HeadlessBackend(Backend):
         if patch.full_redraw:
             self.current = Buffer(patch.area)
         elif not patch.area.equals(self.current.area):
-            raise Error("frame patch does not match headless viewport")
+            raise Error(
+                String(
+                    "frame patch does not match headless viewport; got patch=Rect(",
+                    patch.area.x,
+                    ", ",
+                    patch.area.y,
+                    ", ",
+                    patch.area.width,
+                    ", ",
+                    patch.area.height,
+                    "), viewport=Rect(",
+                    self.current.area.x,
+                    ", ",
+                    self.current.area.y,
+                    ", ",
+                    self.current.area.width,
+                    ", ",
+                    self.current.area.height,
+                    ")",
+                )
+            )
         for index in range(len(patch.changes)):
             if not self.current.set_cell(
                 patch.changes[index].point, patch.changes[index].cell
@@ -279,14 +336,34 @@ struct AnsiBackend(Backend):
 
     def present(mut self, patch: FramePatch) raises:
         if not patch.area.equals(self.area):
-            raise Error("frame patch does not match ANSI backend viewport")
+            raise Error(
+                String(
+                    "frame patch does not match ANSI backend viewport; got patch=Rect(",
+                    patch.area.x,
+                    ", ",
+                    patch.area.y,
+                    ", ",
+                    patch.area.width,
+                    ", ",
+                    patch.area.height,
+                    "), viewport=Rect(",
+                    self.area.x,
+                    ", ",
+                    self.area.y,
+                    ", ",
+                    self.area.width,
+                    ", ",
+                    self.area.height,
+                    ")",
+                )
+            )
         var encoded = _encode_ansi_patch(patch)
-        var output = FileDescriptor(self.output_descriptor)
-        if self.first_frame or patch.full_redraw:
-            output.write_string("\x1b[2J\x1b[H")
-            self.first_frame = False
+        var presentation = String()
+        var reset_screen = self.first_frame or patch.full_redraw
+        if reset_screen:
+            presentation += "\x1b[2J\x1b[H"
         if encoded:
-            output.write_string(encoded)
+            presentation += encoded
         var cursor_output = String()
         if patch.cursor:
             var point = patch.cursor.value().copy()
@@ -301,7 +378,18 @@ struct AnsiBackend(Backend):
         elif self.cursor:
             cursor_output += "\x1b[?25l"
         if cursor_output:
-            output.write_string(cursor_output)
+            presentation += cursor_output
+        if presentation:
+            var output = String()
+            if self.terminal_capabilities.synchronized_output:
+                output += "\x1b[?2026h"
+            output += presentation
+            if self.terminal_capabilities.synchronized_output:
+                output += "\x1b[?2026l"
+            var descriptor = FileDescriptor(self.output_descriptor)
+            descriptor.write_string(output)
+        if reset_screen:
+            self.first_frame = False
         self.cursor = patch.cursor.copy()
 
     def clear(mut self) raises:
@@ -340,7 +428,12 @@ struct InlineBackend(Backend):
         capabilities: Optional[TerminalCapabilities] = None,
     ) raises:
         if output_descriptor < 0:
-            raise Error("inline output descriptor must be non-negative")
+            raise Error(
+                String(
+                    "inline output descriptor must be non-negative; got ",
+                    output_descriptor,
+                )
+            )
         self.area = Rect(0, 0, max(width, 0), max(height, 0))
         self.output_descriptor = output_descriptor
         self.first_frame = True
@@ -391,7 +484,30 @@ struct InlineBackend(Backend):
 
     def present(mut self, patch: FramePatch) raises:
         if not patch.area.equals(self.area):
-            raise Error("frame patch does not match inline backend viewport")
+            raise Error(
+                String(
+                    (
+                        "frame patch does not match inline backend viewport; got"
+                        " patch=Rect("
+                    ),
+                    patch.area.x,
+                    ", ",
+                    patch.area.y,
+                    ", ",
+                    patch.area.width,
+                    ", ",
+                    patch.area.height,
+                    "), viewport=Rect(",
+                    self.area.x,
+                    ", ",
+                    self.area.y,
+                    ", ",
+                    self.area.width,
+                    ", ",
+                    self.area.height,
+                    ")",
+                )
+            )
         var output = FileDescriptor(self.output_descriptor)
         var encoded = String()
         self._return_to_anchor(encoded)
@@ -404,7 +520,13 @@ struct InlineBackend(Backend):
         if patch.cursor:
             self._place_cursor(encoded, patch.cursor.value())
         if encoded:
-            output.write_string(encoded)
+            var presentation = String()
+            if self.terminal_capabilities.synchronized_output:
+                presentation += "\x1b[?2026h"
+            presentation += encoded
+            if self.terminal_capabilities.synchronized_output:
+                presentation += "\x1b[?2026l"
+            output.write_string(presentation)
 
     def clear(mut self):
         """Erase the owned rows; the next presentation reserves them again."""

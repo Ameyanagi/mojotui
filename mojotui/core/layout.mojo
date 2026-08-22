@@ -45,7 +45,9 @@ struct ConstraintKind(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 5:
-            raise Error("invalid layout constraint kind")
+            raise Error(
+                String("layout constraint kind must be within [0, 5]; got ", value)
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -123,7 +125,7 @@ struct Flex(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 5:
-            raise Error("invalid layout flex mode")
+            raise Error(String("layout flex mode must be within [0, 5]; got ", value))
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -143,7 +145,7 @@ struct Direction(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 1:
-            raise Error("invalid layout direction")
+            raise Error(String("layout direction must be within [0, 1]; got ", value))
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:

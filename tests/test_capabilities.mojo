@@ -18,28 +18,37 @@ from mojotui import (
 
 
 def test_capability_discriminants_are_validated() raises:
-    with assert_raises(contains="invalid terminal color profile"):
+    with assert_raises(contains="terminal color profile must be within [0, 3]; got 4"):
         _ = ColorProfile(4)
-    with assert_raises(contains="invalid terminal appearance"):
+    with assert_raises(contains="terminal appearance must be within [0, 2]; got 3"):
         _ = TerminalAppearance(3)
 
 
 def test_profiled_color_rejects_values_unsupported_by_each_profile() raises:
-    with assert_raises(contains="monochrome fallback"):
+    with assert_raises(
+        contains="monochrome fallback must use the default color; got color index 7"
+    ):
         _ = ProfiledColor(
             Color.indexed(7),
             Color.indexed(7),
             Color.indexed(7),
             Color.rgb(255, 255, 255),
         )
-    with assert_raises(contains="ANSI-16 fallback"):
+    with assert_raises(
+        contains=(
+            "ANSI-16 fallback must be default or indexed 0 through 15;"
+            " got color index 16"
+        )
+    ):
         _ = ProfiledColor(
             Color.default(),
             Color.indexed(16),
             Color.indexed(16),
             Color.rgb(0, 95, 0),
         )
-    with assert_raises(contains="ANSI-256 fallback"):
+    with assert_raises(
+        contains="ANSI-256 fallback must be default or indexed; got an RGB color"
+    ):
         _ = ProfiledColor(
             Color.default(),
             Color.indexed(2),
@@ -132,6 +141,53 @@ def test_environment_appearance_uses_last_colorfgbg_field() raises:
     var malformed = terminal_capabilities_from_environment(colorfgbg="white;blue")
     assert_true(malformed.appearance == TerminalAppearance.DARK)
     assert_false(malformed.equals(light))
+
+
+def test_environment_detects_synchronized_output_implementors() raises:
+    assert_true(
+        terminal_capabilities_from_environment(
+            term_program="WezTerm"
+        ).synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(
+            term_program="iTerm.app"
+        ).synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(
+            term_program="ghostty"
+        ).synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(term_program="rio").synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(term="XTERM-KITTY").synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(
+            term="alacritty-direct"
+        ).synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(term="foot-extra").synchronized_output
+    )
+    assert_true(
+        terminal_capabilities_from_environment(
+            term="contour-256color"
+        ).synchronized_output
+    )
+
+
+def test_environment_synchronized_output_detection_is_conservative() raises:
+    assert_false(terminal_capabilities_from_environment().synchronized_output)
+    assert_false(
+        terminal_capabilities_from_environment(
+            term_program="wezterm",
+            term="xterm-256color",
+        ).synchronized_output
+    )
 
 
 def main() raises:

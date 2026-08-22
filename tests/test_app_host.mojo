@@ -13,10 +13,12 @@ from mojotui import (
     InputEvent,
     KeyEvent,
     ManualClock,
+    NoopAdapter,
     Rect,
     RuntimeAdapter,
     Size,
     Subscription,
+    SystemClock,
     UpdateResult,
 )
 
@@ -82,6 +84,27 @@ struct HostApplication(Application, Copyable):
         return HostMessage(size.width)
 
 
+struct NoopTestApplication(Application, Copyable):
+    comptime Model = HostModel
+    comptime Message = KeyEvent
+    comptime Effect = Bool
+
+    def __init__(out self):
+        pass
+
+    def init(mut self) raises -> InitResult[Self.Model, Self.Effect]:
+        return InitResult[Self.Model, Self.Effect].ready(HostModel())
+
+    def update(
+        mut self, mut model: Self.Model, var message: Self.Message
+    ) raises -> UpdateResult[Self.Effect]:
+        model.value += 1
+        return UpdateResult[Self.Effect].redraw_only()
+
+    def view(self, model: Self.Model, area: Rect, mut buffer: Buffer) raises:
+        buffer.fill(area, Cell("+" if model.value > 0 else "0"))
+
+
 struct HostAdapter(RuntimeAdapter):
     comptime ApplicationType = HostApplication
 
@@ -116,6 +139,21 @@ struct HostAdapter(RuntimeAdapter):
 
     def close_silently(mut self):
         self.close_count += 1
+
+
+def test_noop_adapter_drives_headless_application_host() raises:
+    var host = ApplicationHost(
+        NoopAdapter[NoopTestApplication](),
+        NoopTestApplication(),
+        SystemClock(),
+        HeadlessBackend(Rect(0, 0, 1, 1)),
+    )
+    host.enqueue(KeyEvent(KeyEvent.ENTER))
+    var step = host.step()
+    assert_equal(step.messages_processed, 1)
+    assert_true(step.rendered)
+    assert_equal(host.runtime.model.value, 1)
+    host.close()
 
 
 def test_host_runs_startup_update_render_and_exit_turns() raises:
@@ -257,6 +295,17 @@ def test_host_schedule_uses_independent_nearest_deadlines() raises:
     assert_true(schedule.consume_tick(100_000_000))
     assert_false(schedule.tick_due(100_000_000))
     assert_equal(schedule.poll_timeout_ms(100_000_000, 1_000, True), 0)
+
+
+def test_host_schedule_does_not_tick_unless_requested() raises:
+    var schedule = HostSchedule()
+    schedule.start(0)
+    assert_false(schedule.tick_due(Int.MAX))
+    assert_false(schedule.consume_tick(Int.MAX))
+    assert_equal(schedule.poll_timeout_ms(0, 1_000), 1_000)
+
+    schedule.request_frame(0)
+    assert_equal(schedule.poll_timeout_ms(0, 1_000), 16)
 
 
 def test_tick_and_resize_messages_coalesce_to_latest_values() raises:

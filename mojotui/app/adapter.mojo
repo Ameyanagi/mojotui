@@ -50,6 +50,35 @@ trait RuntimeAdapter(Deinitable, Movable):
         ...
 
 
+struct NoopAdapter[A: Application](RuntimeAdapter):
+    """A runtime adapter for applications that use no commands or subscriptions."""
+
+    comptime ApplicationType = Self.A
+
+    def __init__(out self):
+        pass
+
+    def execute(mut self, var command: Command[Self.ApplicationType.Effect]) raises:
+        pass
+
+    def start(
+        mut self, var subscription: Subscription[Self.ApplicationType.Effect]
+    ) raises:
+        pass
+
+    def stop(mut self, id: StringSlice) raises:
+        pass
+
+    def take_messages(mut self) raises -> List[Self.ApplicationType.Message]:
+        return []
+
+    def close(mut self) raises:
+        pass
+
+    def close_silently(mut self):
+        pass
+
+
 struct RuntimeScope[R: RuntimeAdapter](Movable):
     """Reject new work after shutdown and route all effects through one owner."""
 

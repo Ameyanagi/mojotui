@@ -6,6 +6,7 @@ from .input import (
     InputParser,
     KeyCode,
     KeyEvent,
+    KeyEventKind,
     KeyModifiers,
     MouseButton,
     MouseEvent,

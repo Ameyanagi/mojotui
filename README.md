@@ -9,32 +9,51 @@ state stays outside widgets.
 The API follows Mojo's ownership and static generic system instead of copying
 Ratatui's Rust types.
 
-The repository currently includes:
+## Install
 
-- clipped Unicode-aware buffers, composable style patches, portable adaptive
-  colors, directly renderable rich text, layout, and ANSI diffs;
-- full-screen, inline, headless, and POSIX terminal support;
-- wrapped/scrolled paragraphs, configurable blocks, multiline lists and tables,
-  fill, tabs, gauges, scrollbars, forms, and an editor widget;
-- typed application state, effects, subscriptions, focus, and keymaps;
-- a lifecycle-safe typed host for fullscreen or inline applications;
-- a piece-table editor with multi-selection undo, file services, controllers,
-  highlighting hooks, and bounded OSC 52 copy support.
+To use Mojotui from your own Pixi project, add the hosted Mojotui channel and
+the Mojo and conda-forge channels to the `channels` list in your project's
+`pixi.toml`:
 
-The project targets macOS and Linux. The Mojo compiler version is pinned to
-`1.1.0.dev2026081813`, so use Pixi rather than a globally installed compiler.
+```toml
+[workspace]
+channels = [
+    "https://ameyanagi.github.io/mojo-channel",
+    "https://conda.modular.com/max",
+    "conda-forge",
+]
+```
 
-## Run it
+Then add the package:
 
-Install [Pixi](https://pixi.sh/) and a system C compiler/linker. Xcode Command
-Line Tools provide the linker on macOS; Ubuntu's `build-essential` package
-provides it on Linux. Then run:
+```sh
+pixi add mojo-mojotui
+```
+
+Once installed, run your own file with:
+
+```sh
+pixi run mojo run my_app.mojo
+```
+
+For a source checkout, install [Pixi](https://pixi.sh/) and a system C
+compiler/linker. Xcode Command Line Tools provide the linker on macOS; Ubuntu's
+`build-essential` package provides it on Linux. Mojotui targets macOS and Linux,
+and its Mojo compiler version is pinned to stable `1.0.0`, so use Pixi rather
+than a globally installed compiler. Then run:
 
 ```sh
 pixi install --locked
 pixi run check
 pixi run dashboard
 pixi run editor -- notes.txt
+pixi run virtual-list
+```
+
+Run your own file against the checkout with:
+
+```sh
+pixi run mojo run -I . your_file.mojo
 ```
 
 The dashboard exits with `q` or Ctrl-C. Up and Down change the selected process;
@@ -46,11 +65,16 @@ transaction. Running `pixi run editor` without a path opens an in-memory
 buffer. See [the editor example guide](docs/editor-example.md) for controls,
 architecture, and headless testing.
 
+The virtual-list example navigates 50,000 logical rows without constructing
+50,000 rich-text values. Home/End and Page Up/Page Down demonstrate distant
+viewport jumps, with page size derived from the live terminal viewport; `q` or
+Escape exits.
+
 `pixi run check` runs the Mojo tests, builds the executable fixtures, exercises
 terminal restoration through a PTY, verifies formatting, compiles with
 `--Werror`, checks the static type policy, and audits the unsafe boundary.
 
-## A small renderer
+## Quickstart
 
 Widgets are values. Pure renderers can draw directly into a caller-owned
 `Buffer`; interactive applications ask `Terminal` for a `Frame`, render into
@@ -81,6 +105,21 @@ The same program is checked in as `examples/hello.mojo`:
 pixi run mojo run -I . examples/hello.mojo
 ```
 
+## Features
+
+The repository currently includes:
+
+- clipped Unicode-aware buffers, composable style patches, portable adaptive
+  colors, directly renderable rich text, layout, and ANSI diffs;
+- full-screen, inline, headless, and POSIX terminal support;
+- wrapped/scrolled paragraphs, configurable blocks, multiline lists and tables,
+  a lazy `VirtualList` for large result sets, fill, tabs, gauges, scrollbars,
+  forms, and an editor widget;
+- typed application state, effects, subscriptions, focus, and keymaps;
+- a lifecycle-safe typed host for fullscreen or inline applications;
+- a piece-table editor with multi-selection undo, file services, controllers,
+  highlighting hooks, and bounded OSC 52 copy support.
+
 ## Portable terminal colors
 
 `AdaptiveColor` resolves light, dark, and unknown-appearance alternatives for
@@ -104,14 +143,18 @@ def main() raises:
         ProfiledColor.from_rgb(80, 200, 255),  # dark background
     )
     var style = Style(foreground=accent.resolve(capabilities))
+    print(String("accent resolves to index ", style.foreground.index()))
 ```
 
 Pass the same capability value to `AnsiBackend` or `InlineBackend`. Headless
 tests should pass an explicit value when exercising a particular theme.
 
-Use `TerminalSession`, `AnsiBackend`, `PosixReactor`, and `InputParser` for an
-interactive full-screen program. [The dashboard source](examples/dashboard.mojo)
-contains a complete event loop.
+Typed applications implement the `Application` trait and run under
+`TerminalApplicationHost`; see [the dashboard source](examples/dashboard.mojo).
+The first interactive rung is the [counter tutorial](examples/counter.mojo):
+run it with `pixi run counter` to see the `run(app)` convenience API.
+For a manual event loop without the typed application layer, see
+[the manual-loop hello example](examples/hello_loop.mojo).
 
 ## Function syntax and strict types
 

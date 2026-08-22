@@ -106,5 +106,12 @@ def test_unbound_text_input_becomes_insert_action() raises:
     assert_equal(action.value().command.value().text, "界")
 
 
+def test_text_input_accepts_repeat_and_ignores_release() raises:
+    var repeated = text_input_action(KeyEvent.character("x", kind=KeyEvent.REPEAT))
+    assert_true(repeated)
+    assert_equal(repeated.value().command.value().text, "x")
+    assert_false(text_input_action(KeyEvent.character("x", kind=KeyEvent.RELEASE)))
+
+
 def main() raises:
     TestSuite.discover_tests[__functions_in_module()]().run()

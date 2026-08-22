@@ -1,28 +1,44 @@
 [workspace]
 authors = ["Ameyanagi <ryuichi@ameyanagi.com>"]
-channels = ["https://conda.modular.com/max-nightly", "conda-forge"]
+channels = [
+    "https://ameyanagi.github.io/mojo-channel",
+    "https://conda.modular.com/max",
+    "conda-forge",
+]
 name = "mojotui"
 platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
 version = "0.1.0"
 
 [tasks]
 bench = { cmd = "mojo run -I . benchmarks/render.mojo", description = "Benchmark full, changed, and unchanged 80x24 ANSI frames" }
+bench-collections = { cmd = "mojo run -I . benchmarks/collections.mojo", description = "Benchmark distant viewport jumps in 50k-row lists and tables" }
+bench-large-list = { cmd = "mojo run -I . benchmarks/large_list.mojo", description = "Benchmark eager and lazy highlighted 50k-row lists with p50/p95" }
 bench-editor = { cmd = "mojo run -I . benchmarks/editor.mojo", description = "Benchmark 10 MiB editor edits, history, and viewport rendering" }
 check = { depends-on = ["test", "lint", "release-contract-test"], description = "Run the complete non-mutating validation suite" }
-compiler-lint = { cmd = "mojo precompile --Werror mojotui -o .pixi/mojotui-lint.mojoc", description = "Compile the package with warnings treated as errors" }
+compiler-lint = { cmd = "mojo precompile --Werror --warn-on-unstable-apis mojotui -o .pixi/mojotui-lint.mojoc", description = "Compile the package with warnings treated as errors" }
+counter = { cmd = "mojo run -I . examples/counter.mojo", description = "Run the counter tutorial example" }
 dashboard = { cmd = "mojo run -I . examples/dashboard.mojo", description = "Run the interactive system-monitor dashboard example" }
 editor = { cmd = "mojo run -I . examples/editor.mojo", description = "Run the interactive text editor; pass a file path after --" }
 format = { cmd = "bash scripts/format.sh", description = "Format Mojo source files in place" }
+fuzzy = { cmd = "mojo run -I . examples/fuzzy.mojo", description = "Run the interactive fuzzy-picker example" }
+virtual-list = { cmd = "mojo run -I . examples/virtual_list.mojo", description = "Run the lazy 50k-row list example" }
 format-check = { cmd = "bash scripts/check-format.sh", description = "Verify Mojo formatting without modifying source files" }
-generate-unicode = { cmd = "python scripts/generate-unicode-width.py", description = "Regenerate pinned Unicode width tables" }
-lint = { depends-on = ["format-check", "type-check", "unsafe-check"], description = "Run formatting, strict-type, and unsafe-boundary checks" }
+hello-loop = { cmd = "mojo run -I . examples/hello_loop.mojo", description = "Run the manual-event-loop hello example" }
+lint = { depends-on = ["format-check", "readme-check", "type-check", "unsafe-check"], description = "Run formatting, README, strict-type, and unsafe-boundary checks" }
+package = { cmd = "rattler-build build --recipe conda.recipe/recipe.yaml -c https://ameyanagi.github.io/mojo-channel -c conda-forge -c https://conda.modular.com/max -c https://repo.prefix.dev/modular-community", description = "Build the local Conda package" }
 precompile = { cmd = "mojo precompile mojotui -o .pixi/mojotui-check.mojoc", description = "Precompile the mojotui package" }
 release-contract-test = { cmd = "bash scripts/test-release-contract.sh", description = "Verify release tag, version, and compiler guards" }
+readme-check = { cmd = "bash scripts/check-readme.sh", description = "Compile the README's fenced Mojo blocks exactly as pasted" }
 test = { cmd = "bash scripts/test.sh", description = "Run all Mojo TestSuite files" }
 type-check = { depends-on = ["type-policy-check", "compiler-lint"], description = "Enforce static API policy and compile with warnings as errors" }
 type-policy-check = { cmd = "bash scripts/check-types.sh", description = "Reject obsolete declarations and dynamic escape-hatch types" }
 unsafe-check = { cmd = "bash scripts/check-unsafe.sh", description = "Reject unsafe or FFI operations outside the platform boundary" }
 
 [dependencies]
-mojo = "==1.1.0.dev2026081813"
+mojo-moji = "*"
+mojo = "==1.0.0"
+rattler-build = ">=0.74,<0.75"
 ripgrep = ">=14,<16"
+
+# mojo-moji is built locally from ~/dev/moji (file:// channel above); only an
+# osx-arm64 build exists until moji publishes to a shared channel.

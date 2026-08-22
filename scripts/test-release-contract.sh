@@ -18,7 +18,7 @@ printf '%s\n' \
   'version = "0.1.0"' \
   '' \
   '[dependencies]' \
-  'mojo = "==1.1.0.dev2026081813"' > "${fixture_dir}/pixi.toml"
+  'mojo = "==1.0.0"' > "${fixture_dir}/pixi.toml"
 
 git -C "$fixture_dir" init --quiet
 git -C "$fixture_dir" config user.name 'Mojotui release test'
@@ -62,8 +62,17 @@ printf '%s\n' \
   'version = "0.1.0"' \
   '' \
   '[dependencies]' \
-  'mojo = ">=1.1"' > "${fixture_dir}/pixi.toml"
+  'mojo = "==1.0.1"' > "${fixture_dir}/pixi.toml"
+expect_failure 'a different exact compiler version' run_contract_check v0.1.0
+
+printf '%s\n' \
+  '[workspace]' \
+  'name = "mojotui"' \
+  'version = "0.1.0"' \
+  '' \
+  '[dependencies]' \
+  'mojo = ">=1.0"' > "${fixture_dir}/pixi.toml"
 expect_failure 'an inexact compiler requirement' run_contract_check v0.1.0
 
 printf '%s\n' \
-  'Release contract tests passed (annotated accepted; version, tag type, and compiler guards rejected invalid fixtures).'
+  'Release contract tests passed (annotated stable-1.0.0 accepted; version, tag type, and compiler guards rejected invalid fixtures).'

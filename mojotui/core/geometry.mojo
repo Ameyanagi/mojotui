@@ -79,7 +79,14 @@ struct Size(Copyable):
 
     def area(self) raises -> Int:
         if self.width != 0 and self.height > Int.MAX // self.width:
-            raise Error("size area exceeds Int.MAX")
+            raise Error(
+                String(
+                    "size area must not exceed Int.MAX; got width=",
+                    self.width,
+                    ", height=",
+                    self.height,
+                )
+            )
         return self.width * self.height
 
     def equals(self, other: Self) -> Bool:
@@ -156,6 +163,19 @@ struct Rect(Copyable):
             _saturating_add_nonnegative(self.y, inset_height),
             self.width - inset_width * 2,
             self.height - inset_height * 2,
+        )
+
+    def centered(self, width: Int, height: Int) -> Self:
+        """Center clamped extents within this rectangle."""
+        if self.is_empty():
+            return Self(self.x, self.y, 0, 0)
+        var centered_width = max(0, min(width, self.width))
+        var centered_height = max(0, min(height, self.height))
+        return Self(
+            self.x + (self.width - centered_width) // 2,
+            self.y + (self.height - centered_height) // 2,
+            centered_width,
+            centered_height,
         )
 
     def translated(self, dx: Int, dy: Int) -> Self:

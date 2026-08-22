@@ -1,7 +1,7 @@
 # Known limitations
 
-- The project follows a pinned Mojo nightly and has no source-compatibility
-  promise before 1.0.
+- The project follows a pinned stable Mojo release and has no
+  source-compatibility promise before its own 1.0.
 - Windows has no terminal backend or event reactor.
 - Inline rendering follows terminal width but owns a fixed height. Writes
   through the same terminal descriptor while it is active break its cursor
@@ -15,7 +15,8 @@
 - A backend reports capabilities but does not rewrite arbitrary cell colors.
   Applications must resolve `ProfiledColor` or `AdaptiveColor` before building
   `Style`; directly supplied RGB colors remain RGB output by explicit intent.
-- Width and word-wrap whitespace tables are pinned to Unicode 17.0.0. A
+- Text width comes from the moji package, the ecosystem source of truth for
+  Unicode 17.0.0. Word-wrap whitespace follows the same Unicode version. A
   terminal configured with different emoji or ambiguous-width behavior can
   disagree with the renderer.
 - The editor accepts UTF-8 and preserves BOM plus LF or CRLF. Other encodings

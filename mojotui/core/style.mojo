@@ -21,7 +21,9 @@ struct ColorKind(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 2:
-            raise Error("invalid terminal color kind")
+            raise Error(
+                String("terminal color kind must be within [0, 2]; got ", value)
+            )
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -34,6 +36,22 @@ struct Color(Copyable, ImplicitlyCopyable):
     comptime DEFAULT = ColorKind.DEFAULT
     comptime INDEXED = ColorKind.INDEXED
     comptime RGB = ColorKind.RGB
+    comptime BLACK = Color(ColorKind.INDEXED, 0)
+    comptime RED = Color(ColorKind.INDEXED, 1)
+    comptime GREEN = Color(ColorKind.INDEXED, 2)
+    comptime YELLOW = Color(ColorKind.INDEXED, 3)
+    comptime BLUE = Color(ColorKind.INDEXED, 4)
+    comptime MAGENTA = Color(ColorKind.INDEXED, 5)
+    comptime CYAN = Color(ColorKind.INDEXED, 6)
+    comptime WHITE = Color(ColorKind.INDEXED, 7)
+    comptime BRIGHT_BLACK = Color(ColorKind.INDEXED, 8)
+    comptime BRIGHT_RED = Color(ColorKind.INDEXED, 9)
+    comptime BRIGHT_GREEN = Color(ColorKind.INDEXED, 10)
+    comptime BRIGHT_YELLOW = Color(ColorKind.INDEXED, 11)
+    comptime BRIGHT_BLUE = Color(ColorKind.INDEXED, 12)
+    comptime BRIGHT_MAGENTA = Color(ColorKind.INDEXED, 13)
+    comptime BRIGHT_CYAN = Color(ColorKind.INDEXED, 14)
+    comptime BRIGHT_WHITE = Color(ColorKind.INDEXED, 15)
 
     var kind: ColorKind
     var red: Int
@@ -57,8 +75,10 @@ struct Color(Copyable, ImplicitlyCopyable):
         return Self()
 
     @staticmethod
-    def indexed(index: Int) -> Self:
-        return Self(Self.INDEXED, _channel(index))
+    def indexed(index: Int) raises -> Self:
+        if index < 0 or index > 255:
+            raise Error(String("color index must be within [0, 255]; got ", index))
+        return Self(Self.INDEXED, index)
 
     @staticmethod
     def rgb(red: Int, green: Int, blue: Int) -> Self:
@@ -97,7 +117,9 @@ struct ModifierSet(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, bits: Int) raises:
         if bits < 0 or (bits & ~((1 << 8) - 1)) != 0:
-            raise Error("invalid terminal modifier flags")
+            raise Error(
+                String("terminal modifier flags must be within [0, 255]; got ", bits)
+            )
         self._bits = bits
 
     def __eq__(self, other: Self) -> Bool:
@@ -156,6 +178,30 @@ struct Style(Copyable):
     def has(self, modifier: ModifierSet) -> Bool:
         return self.modifiers.contains(modifier)
 
+    def bold(self) -> Self:
+        return self.patched(StylePatch(add_modifiers=Self.BOLD))
+
+    def italic(self) -> Self:
+        return self.patched(StylePatch(add_modifiers=Self.ITALIC))
+
+    def dim(self) -> Self:
+        return self.patched(StylePatch(add_modifiers=Self.DIM))
+
+    def underlined(self) -> Self:
+        return self.patched(StylePatch(add_modifiers=Self.UNDERLINED))
+
+    def reversed(self) -> Self:
+        return self.patched(StylePatch(add_modifiers=Self.REVERSED))
+
+    def crossed_out(self) -> Self:
+        return self.patched(StylePatch(add_modifiers=Self.CROSSED_OUT))
+
+    def fg(self, color: Color) -> Self:
+        return self.patched(StylePatch(foreground=color))
+
+    def bg(self, color: Color) -> Self:
+        return self.patched(StylePatch(background=color))
+
     def patched(self, patch: StylePatch) -> Self:
         """Resolve one patch over this style without erasing unspecified fields."""
         var result = self.copy()
@@ -208,6 +254,30 @@ struct StylePatch(Copyable):
     @staticmethod
     def plain() -> Self:
         return Self()
+
+    def bold(self) -> Self:
+        return self.then(Self(add_modifiers=ModifierSet.BOLD))
+
+    def italic(self) -> Self:
+        return self.then(Self(add_modifiers=ModifierSet.ITALIC))
+
+    def dim(self) -> Self:
+        return self.then(Self(add_modifiers=ModifierSet.DIM))
+
+    def underlined(self) -> Self:
+        return self.then(Self(add_modifiers=ModifierSet.UNDERLINED))
+
+    def reversed(self) -> Self:
+        return self.then(Self(add_modifiers=ModifierSet.REVERSED))
+
+    def crossed_out(self) -> Self:
+        return self.then(Self(add_modifiers=ModifierSet.CROSSED_OUT))
+
+    def fg(self, color: Color) -> Self:
+        return self.then(Self(foreground=color))
+
+    def bg(self, color: Color) -> Self:
+        return self.then(Self(background=color))
 
     @staticmethod
     def from_style(style: Style) -> Self:

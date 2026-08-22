@@ -1,7 +1,7 @@
 from std.os import Pipe
 from std.testing import TestSuite, assert_equal, assert_false, assert_true
 
-from mojotui import InputParser, KeyEvent, PosixReactor, SessionOptions
+from mojotui import InputParser, KeyEvent, MouseCapture, PosixReactor, SessionOptions
 from mojotui import session_enter_sequence, session_leave_sequence
 from mojotui.platform import poll_readable
 
@@ -60,15 +60,87 @@ def test_reactor_wakes_for_background_message_pipe() raises:
 
 
 def test_session_sequences_reverse_enabled_features() raises:
-    var options = SessionOptions(mouse_capture=True)
+    var options = SessionOptions(mouse=MouseCapture.MOTION)
     assert_equal(
         session_enter_sequence(options),
-        "\x1b[?1049h\x1b[?25l\x1b[?2004h\x1b[?1004h\x1b[?1003h\x1b[?1006h",
+        "\x1b[?1049h\x1b[?25l\x1b[?2004h\x1b[?1004h\x1b[?1003h\x1b[?1006h\x1b[>3u",
     )
     assert_equal(
         session_leave_sequence(options),
-        "\x1b[0m\x1b[?1006l\x1b[?1003l\x1b[?1004l\x1b[?2004l\x1b[?25h\x1b[?1049l",
+        (
+            "\x1b[<u\x1b[0m\x1b[?1006l\x1b[?1003l\x1b[?1004l"
+            "\x1b[?2004l\x1b[?25h\x1b[?1049l"
+        ),
     )
+
+
+def test_session_keyboard_enhancement_sequences() raises:
+    var enabled = SessionOptions(
+        False,
+        False,
+        False,
+        False,
+        MouseCapture.OFF,
+    )
+    assert_equal(session_enter_sequence(enabled), "\x1b[>3u")
+    assert_equal(session_leave_sequence(enabled), "\x1b[<u\x1b[0m")
+
+    var disabled = SessionOptions(
+        False,
+        False,
+        False,
+        False,
+        MouseCapture.OFF,
+        keyboard_enhancement=False,
+    )
+    assert_equal(session_enter_sequence(disabled), "")
+    assert_equal(session_leave_sequence(disabled), "\x1b[0m")
+
+
+def test_session_sequences_cover_each_mouse_capture_policy() raises:
+    var off = SessionOptions(
+        False,
+        False,
+        False,
+        False,
+        MouseCapture.OFF,
+        keyboard_enhancement=False,
+    )
+    assert_equal(session_enter_sequence(off), "")
+    assert_equal(session_leave_sequence(off), "\x1b[0m")
+
+    var clicks = SessionOptions(
+        False,
+        False,
+        False,
+        False,
+        MouseCapture.CLICKS,
+        keyboard_enhancement=False,
+    )
+    assert_equal(session_enter_sequence(clicks), "\x1b[?1000h\x1b[?1006h")
+    assert_equal(session_leave_sequence(clicks), "\x1b[0m\x1b[?1006l\x1b[?1000l")
+
+    var drag = SessionOptions(
+        False,
+        False,
+        False,
+        False,
+        MouseCapture.DRAG,
+        keyboard_enhancement=False,
+    )
+    assert_equal(session_enter_sequence(drag), "\x1b[?1002h\x1b[?1006h")
+    assert_equal(session_leave_sequence(drag), "\x1b[0m\x1b[?1006l\x1b[?1002l")
+
+    var motion = SessionOptions(
+        False,
+        False,
+        False,
+        False,
+        MouseCapture.MOTION,
+        keyboard_enhancement=False,
+    )
+    assert_equal(session_enter_sequence(motion), "\x1b[?1003h\x1b[?1006h")
+    assert_equal(session_leave_sequence(motion), "\x1b[0m\x1b[?1006l\x1b[?1003l")
 
 
 def main() raises:

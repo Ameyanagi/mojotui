@@ -5,6 +5,7 @@ package_version="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' pixi.toml)"
 mojo_requirement="$(sed -n 's/^mojo = "\([^"]*\)"$/\1/p' pixi.toml)"
 expected_tag="v${package_version}"
 expected_ref="refs/tags/${expected_tag}"
+expected_mojo_requirement="==1.0.0"
 
 if [[ -z "$package_version" || "$package_version" == *$'\n'* ]]; then
   printf '%s\n' 'Release builds require one workspace version.' >&2
@@ -23,8 +24,9 @@ if [[ "${GITHUB_REF:-}" != "$expected_ref" ]]; then
   exit 1
 fi
 
-if [[ ! "$mojo_requirement" =~ ^==[[:alnum:].]+$ ]]; then
-  printf '%s\n' 'Release builds require one exact Mojo compiler pin.' >&2
+if [[ "$mojo_requirement" != "$expected_mojo_requirement" ]]; then
+  printf '%s\n' \
+    "Release builds require stable Mojo ${expected_mojo_requirement}; received ${mojo_requirement:-<unset>}." >&2
   exit 1
 fi
 
@@ -36,4 +38,4 @@ if [[ "$tag_type" != 'tag' ]]; then
 fi
 
 printf '%s\n' \
-  "Release contract passed for ${expected_tag} and Mojo ${mojo_requirement}."
+  "Release contract passed for ${expected_tag} and stable Mojo ${mojo_requirement}."

@@ -22,6 +22,18 @@ struct KeyCode(Copyable, Equatable, ImplicitlyCopyable):
     comptime DELETE = KeyCode(12, _validated=True)
     comptime PAGE_UP = KeyCode(13, _validated=True)
     comptime PAGE_DOWN = KeyCode(14, _validated=True)
+    comptime F1 = KeyCode(15, _validated=True)
+    comptime F2 = KeyCode(16, _validated=True)
+    comptime F3 = KeyCode(17, _validated=True)
+    comptime F4 = KeyCode(18, _validated=True)
+    comptime F5 = KeyCode(19, _validated=True)
+    comptime F6 = KeyCode(20, _validated=True)
+    comptime F7 = KeyCode(21, _validated=True)
+    comptime F8 = KeyCode(22, _validated=True)
+    comptime F9 = KeyCode(23, _validated=True)
+    comptime F10 = KeyCode(24, _validated=True)
+    comptime F11 = KeyCode(25, _validated=True)
+    comptime F12 = KeyCode(26, _validated=True)
 
     var _value: Int
 
@@ -29,8 +41,8 @@ struct KeyCode(Copyable, Equatable, ImplicitlyCopyable):
         self._value = value
 
     def __init__(out self, value: Int) raises:
-        if value < 0 or value > 14:
-            raise Error("invalid key code")
+        if value < 0 or value > 26:
+            raise Error(String("key code must be within [0, 26]; got ", value))
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -52,7 +64,7 @@ struct KeyModifiers(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, bits: Int) raises:
         if bits < 0 or (bits & ~7) != 0:
-            raise Error("invalid key modifier flags")
+            raise Error(String("key modifier flags must be within [0, 7]; got ", bits))
         self._bits = bits
 
     def __eq__(self, other: Self) -> Bool:
@@ -65,8 +77,24 @@ struct KeyModifiers(Copyable, Equatable, ImplicitlyCopyable):
         return Self(self._bits | modifier._bits, _validated=True)
 
 
+struct KeyEventKind(Copyable, Equatable, ImplicitlyCopyable):
+    """Nominal semantic kind of a keyboard event."""
+
+    comptime PRESS = KeyEventKind(_value=0)
+    comptime REPEAT = KeyEventKind(_value=1)
+    comptime RELEASE = KeyEventKind(_value=2)
+
+    var _value: Int
+
+    def __init__(out self, *, _value: Int):
+        self._value = _value
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._value == other._value
+
+
 struct KeyEvent(Copyable):
-    """A keyboard event with a semantic key code and modifier mask."""
+    """A keyboard event with a semantic key code, modifiers, and event kind."""
 
     comptime CHARACTER = KeyCode.CHARACTER
     comptime ESCAPE = KeyCode.ESCAPE
@@ -83,35 +111,75 @@ struct KeyEvent(Copyable):
     comptime DELETE = KeyCode.DELETE
     comptime PAGE_UP = KeyCode.PAGE_UP
     comptime PAGE_DOWN = KeyCode.PAGE_DOWN
+    comptime F1 = KeyCode.F1
+    comptime F2 = KeyCode.F2
+    comptime F3 = KeyCode.F3
+    comptime F4 = KeyCode.F4
+    comptime F5 = KeyCode.F5
+    comptime F6 = KeyCode.F6
+    comptime F7 = KeyCode.F7
+    comptime F8 = KeyCode.F8
+    comptime F9 = KeyCode.F9
+    comptime F10 = KeyCode.F10
+    comptime F11 = KeyCode.F11
+    comptime F12 = KeyCode.F12
 
     comptime NO_MODIFIERS = KeyModifiers.NONE
     comptime SHIFT = KeyModifiers.SHIFT
     comptime ALT = KeyModifiers.ALT
     comptime CONTROL = KeyModifiers.CONTROL
 
+    comptime PRESS = KeyEventKind.PRESS
+    comptime REPEAT = KeyEventKind.REPEAT
+    comptime RELEASE = KeyEventKind.RELEASE
+
     var code: KeyCode
     var text: String
     var modifiers: KeyModifiers
+    var kind: KeyEventKind
 
     def __init__(
         out self,
         code: KeyCode,
         var text: String = "",
         modifiers: KeyModifiers = KeyModifiers.NONE,
+        *,
+        kind: KeyEventKind = KeyEventKind.PRESS,
     ):
         self.code = code
         self.text = text^
         self.modifiers = modifiers
+        self.kind = kind
 
     @staticmethod
     def character(
-        var text: String, modifiers: KeyModifiers = KeyModifiers.NONE
+        var text: String,
+        modifiers: KeyModifiers = KeyModifiers.NONE,
+        *,
+        kind: KeyEventKind = KeyEventKind.PRESS,
     ) -> Self:
-        return Self(Self.CHARACTER, text^, modifiers)
+        return Self(Self.CHARACTER, text^, modifiers, kind=kind)
 
     @staticmethod
-    def named(code: KeyCode, modifiers: KeyModifiers = KeyModifiers.NONE) -> Self:
-        return Self(code, modifiers=modifiers)
+    def named(
+        code: KeyCode,
+        modifiers: KeyModifiers = KeyModifiers.NONE,
+        *,
+        kind: KeyEventKind = KeyEventKind.PRESS,
+    ) -> Self:
+        return Self(code, modifiers=modifiers, kind=kind)
+
+    def is_char(self, text: StringSlice) -> Bool:
+        """True for a press of the given character key (kind, code, and text)."""
+        return (
+            self.kind == KeyEventKind.PRESS
+            and self.code == KeyCode.CHARACTER
+            and self.text == text
+        )
+
+    def is_activation(self) -> Bool:
+        """Return whether this press or repeat should activate a control."""
+        return self.kind == Self.PRESS or self.kind == Self.REPEAT
 
 
 struct PasteEvent(Copyable):
@@ -148,7 +216,7 @@ struct MouseKind(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 4:
-            raise Error("invalid mouse event kind")
+            raise Error(String("mouse event kind must be within [0, 4]; got ", value))
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -169,7 +237,7 @@ struct MouseButton(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 2:
-            raise Error("invalid mouse button")
+            raise Error(String("mouse button must be within [0, 2]; got ", value))
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -397,6 +465,56 @@ struct InputParser(Movable):
             return KeyEvent.END
         return None
 
+    def _function_key_code_for_final(self, final: Int) -> Optional[KeyCode]:
+        if final == 0x50:
+            return KeyEvent.F1
+        if final == 0x51:
+            return KeyEvent.F2
+        if final == 0x52:
+            return KeyEvent.F3
+        if final == 0x53:
+            return KeyEvent.F4
+        return None
+
+    def _key_code_for_tilde_parameter(self, parameter: Int) -> Optional[KeyCode]:
+        if parameter == 1:
+            return KeyEvent.HOME
+        if parameter == 2:
+            return KeyEvent.INSERT
+        if parameter == 3:
+            return KeyEvent.DELETE
+        if parameter == 4:
+            return KeyEvent.END
+        if parameter == 5:
+            return KeyEvent.PAGE_UP
+        if parameter == 6:
+            return KeyEvent.PAGE_DOWN
+        if parameter == 11:
+            return KeyEvent.F1
+        if parameter == 12:
+            return KeyEvent.F2
+        if parameter == 13:
+            return KeyEvent.F3
+        if parameter == 14:
+            return KeyEvent.F4
+        if parameter == 15:
+            return KeyEvent.F5
+        if parameter == 17:
+            return KeyEvent.F6
+        if parameter == 18:
+            return KeyEvent.F7
+        if parameter == 19:
+            return KeyEvent.F8
+        if parameter == 20:
+            return KeyEvent.F9
+        if parameter == 21:
+            return KeyEvent.F10
+        if parameter == 23:
+            return KeyEvent.F11
+        if parameter == 24:
+            return KeyEvent.F12
+        return None
+
     def _decimal(self, start: Int, end: Int) -> Int:
         if start >= end:
             return -1
@@ -464,6 +582,79 @@ struct InputParser(Movable):
         )
         return True
 
+    def _parse_csi_u(mut self, mut events: List[InputEvent], length: Int) -> Bool:
+        if Int(self._byte(length - 1)) != 0x75:
+            return False
+
+        var separator = -1
+        var kind_separator = -1
+        for offset in range(2, length - 1):
+            var value = Int(self._byte(offset))
+            if value == 0x3B:
+                if separator >= 0 or kind_separator >= 0:
+                    return False
+                separator = offset
+            elif value == 0x3A:
+                if separator < 0 or kind_separator >= 0:
+                    return False
+                kind_separator = offset
+
+        var codepoint_end = separator if separator >= 0 else length - 1
+        var codepoint = self._decimal(2, codepoint_end)
+        if codepoint < 0 or codepoint > 0x10FFFF:
+            return False
+
+        var modifiers = KeyModifiers.NONE
+        var kind = KeyEvent.PRESS
+        if separator >= 0:
+            var modifiers_end = kind_separator if kind_separator >= 0 else length - 1
+            var modifier_parameter = self._decimal(separator + 1, modifiers_end)
+            if modifier_parameter < 1 or modifier_parameter > 255:
+                return False
+            modifiers = KeyModifiers((modifier_parameter - 1) & 7, _validated=True)
+            if kind_separator >= 0:
+                var event_type = self._decimal(kind_separator + 1, length - 1)
+                if event_type == 2:
+                    kind = KeyEvent.REPEAT
+                elif event_type == 3:
+                    kind = KeyEvent.RELEASE
+                elif event_type != 1:
+                    return False
+
+        if codepoint == 27:
+            self._consume(length)
+            events.append(
+                InputEvent(KeyEvent.named(KeyEvent.ESCAPE, modifiers, kind=kind))
+            )
+            return True
+        if codepoint == 13:
+            self._consume(length)
+            events.append(
+                InputEvent(KeyEvent.named(KeyEvent.ENTER, modifiers, kind=kind))
+            )
+            return True
+        if codepoint == 9:
+            self._consume(length)
+            events.append(
+                InputEvent(KeyEvent.named(KeyEvent.TAB, modifiers, kind=kind))
+            )
+            return True
+        if codepoint == 127:
+            self._consume(length)
+            events.append(
+                InputEvent(KeyEvent.named(KeyEvent.BACKSPACE, modifiers, kind=kind))
+            )
+            return True
+
+        var scalar = Codepoint.from_u32(UInt32(codepoint))
+        if not scalar:
+            return False
+        var text = String()
+        text.append(scalar.value())
+        self._consume(length)
+        events.append(InputEvent(KeyEvent.character(text^, modifiers, kind=kind)))
+        return True
+
     def _parse_csi(mut self, mut events: List[InputEvent]) -> Bool:
         var length = self._csi_length()
         if length == 0:
@@ -488,31 +679,37 @@ struct InputParser(Movable):
                 events.append(InputEvent(FocusEvent(final == 0x49)))
                 return True
 
-        if length == 4 and Int(self._byte(2)) >= 0x31:
-            var final = Int(self._byte(3))
-            if final == 0x7E:
-                var parameter = Int(self._byte(2)) - 0x30
-                var code: Optional[KeyCode] = None
-                if parameter == 1:
-                    code = KeyEvent.HOME
-                elif parameter == 2:
-                    code = KeyEvent.INSERT
-                elif parameter == 3:
-                    code = KeyEvent.DELETE
-                elif parameter == 4:
-                    code = KeyEvent.END
-                elif parameter == 5:
-                    code = KeyEvent.PAGE_UP
-                elif parameter == 6:
-                    code = KeyEvent.PAGE_DOWN
-                if code:
-                    self._consume(length)
-                    events.append(InputEvent(KeyEvent.named(code.value())))
-                    return True
+        if Int(self._byte(length - 1)) == 0x7E:
+            var separator = -1
+            for offset in range(2, length - 1):
+                if Int(self._byte(offset)) == 0x3B:
+                    if separator >= 0:
+                        separator = -2
+                        break
+                    separator = offset
+            var parameter_end = separator if separator >= 0 else length - 1
+            var parameter = self._decimal(2, parameter_end)
+            var code = self._key_code_for_tilde_parameter(parameter)
+            var modifiers = KeyModifiers.NONE
+            var valid_modifiers = separator >= -1
+            if separator >= 0:
+                var modifier_parameter = self._decimal(separator + 1, length - 1)
+                valid_modifiers = modifier_parameter >= 2 and modifier_parameter <= 8
+                if valid_modifiers:
+                    modifiers = KeyModifiers(
+                        modifier_parameter - 1,
+                        _validated=True,
+                    )
+            if code and valid_modifiers:
+                self._consume(length)
+                events.append(InputEvent(KeyEvent.named(code.value(), modifiers)))
+                return True
 
         if length == 6 and Int(self._byte(2)) == 0x31 and Int(self._byte(3)) == 0x3B:
             var modifier_parameter = Int(self._byte(4)) - 0x30
             var code = self._key_code_for_final(Int(self._byte(5)))
+            if not code:
+                code = self._function_key_code_for_final(Int(self._byte(5)))
             if modifier_parameter >= 2 and modifier_parameter <= 8 and code:
                 self._consume(length)
                 events.append(
@@ -534,6 +731,9 @@ struct InputParser(Movable):
             self.in_paste = True
             return True
 
+        if self._parse_csi_u(events, length):
+            return True
+
         var sequence = self._slice_string(0, length)
         self._consume(length)
         events.append(InputEvent(UnknownEvent(sequence^)))
@@ -544,6 +744,17 @@ struct InputParser(Movable):
             return False
         if Int(self._byte(1)) == 0x5B:
             return self._parse_csi(events)
+        if Int(self._byte(1)) == 0x4F:
+            if self.pending_byte_count() == 2:
+                return False
+            var final = Int(self._byte(2))
+            var code = self._key_code_for_final(final)
+            if not code:
+                code = self._function_key_code_for_final(final)
+            if code:
+                self._consume(3)
+                events.append(InputEvent(KeyEvent.named(code.value())))
+                return True
         if Int(self._byte(1)) == 0x1B:
             self._consume(1)
             events.append(InputEvent(KeyEvent.named(KeyEvent.ESCAPE)))

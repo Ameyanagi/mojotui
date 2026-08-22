@@ -59,7 +59,23 @@ struct Buffer(Copyable, Sized):
 
     def _index(self, point: Point) raises -> Int:
         if not self.contains(point):
-            raise Error("point is outside buffer area")
+            raise Error(
+                String(
+                    "point (",
+                    point.x,
+                    ", ",
+                    point.y,
+                    ") is outside buffer area Rect(",
+                    self.area.x,
+                    ", ",
+                    self.area.y,
+                    ", ",
+                    self.area.width,
+                    ", ",
+                    self.area.height,
+                    ")",
+                )
+            )
         return (point.y - self.area.y) * self.area.width + (point.x - self.area.x)
 
     def cell(self, point: Point) raises -> Cell:
@@ -215,7 +231,27 @@ struct Buffer(Copyable, Sized):
     def differences(self, other: Self) raises -> List[BufferDifference]:
         """Return row-major changes from this buffer to an equal-area buffer."""
         if not self.area.equals(other.area):
-            raise Error("cannot compare buffers with different areas")
+            raise Error(
+                String(
+                    "cannot compare buffers with different areas; got self=Rect(",
+                    self.area.x,
+                    ", ",
+                    self.area.y,
+                    ", ",
+                    self.area.width,
+                    ", ",
+                    self.area.height,
+                    "), other=Rect(",
+                    other.area.x,
+                    ", ",
+                    other.area.y,
+                    ", ",
+                    other.area.width,
+                    ", ",
+                    other.area.height,
+                    ")",
+                )
+            )
         var changes = List[BufferDifference]()
         for index in range(len(self.cells)):
             if not self.cells[index].equals(other.cells[index]):

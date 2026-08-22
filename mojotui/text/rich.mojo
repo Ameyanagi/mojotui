@@ -1,14 +1,31 @@
 """Styled text values and grapheme-aware rendering."""
 
-from std.collections import List
+from moji import ByteRange, byte_ranges_of_code_points
+from std.collections import List, Span as StdSpan
 
 from ..core.buffer import Buffer, BufferWrite
 from ..core.cell import Cell
 from ..core.geometry import Point, Rect
-from ..core.style import Style, StylePatch
+from ..core.style import Color, Style, StylePatch
 from ..core.widget import Widget
-from ._unicode_width_data import is_whitespace
 from .width import grapheme_width, text_width
+
+
+def _is_whitespace(value: Int) -> Bool:
+    """Return whether a scalar has Unicode 17's White_Space property."""
+    return (
+        (value >= 0x9 and value <= 0xD)
+        or value == 0x20
+        or value == 0x85
+        or value == 0xA0
+        or value == 0x1680
+        or (value >= 0x2000 and value <= 0x200A)
+        or value == 0x2028
+        or value == 0x2029
+        or value == 0x202F
+        or value == 0x205F
+        or value == 0x3000
+    )
 
 
 struct Alignment(Copyable, Equatable, ImplicitlyCopyable):
@@ -25,7 +42,7 @@ struct Alignment(Copyable, Equatable, ImplicitlyCopyable):
 
     def __init__(out self, value: Int) raises:
         if value < 0 or value > 2:
-            raise Error("invalid text alignment")
+            raise Error(String("text alignment must be within [0, 2]; got ", value))
         self._value = value
 
     def __eq__(self, other: Self) -> Bool:
@@ -43,7 +60,7 @@ struct _StyledGrapheme(Copyable):
         var scalar_count = 0
         for scalar in content.codepoints():
             scalar_count += 1
-            if not is_whitespace(Int(scalar.to_u32())):
+            if not _is_whitespace(Int(scalar.to_u32())):
                 self.whitespace = False
         if scalar_count == 0:
             self.whitespace = False
@@ -181,6 +198,30 @@ struct Span(Copyable, Widget):
         result.apply_style_patch(patch)
         return result^
 
+    def bold(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.BOLD))
+
+    def italic(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.ITALIC))
+
+    def dim(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.DIM))
+
+    def underlined(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.UNDERLINED))
+
+    def reversed(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.REVERSED))
+
+    def crossed_out(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.CROSSED_OUT))
+
+    def fg(self, color: Color) -> Self:
+        return self.patched_style(StylePatch(foreground=color))
+
+    def bg(self, color: Color) -> Self:
+        return self.patched_style(StylePatch(background=color))
+
 
 struct Line(Copyable, Widget):
     """A logical line composed of styled spans."""
@@ -203,6 +244,80 @@ struct Line(Copyable, Widget):
         alignment: Alignment = Alignment.START,
     ) -> Self:
         return Self([Span(content^, style)], alignment)
+
+    @staticmethod
+    def highlighted(
+        var content: String,
+        positions: StdSpan[Int, _],
+        patch: StylePatch,
+        *,
+        base: StylePatch = StylePatch.plain(),
+    ) raises -> Self:
+        """Build a line with scalar-position matches highlighted.
+
+        Positions are zero-based, strictly increasing Unicode scalar indices,
+        matching hibana's `MatchResult.positions` contract. Invalid,
+        unsorted, or out-of-range positions propagate moji's teaching errors.
+        Matched byte ranges expand to whole grapheme clusters before slicing,
+        so no rendered span can split a wide or multi-scalar grapheme.
+        """
+        var ranges = byte_ranges_of_code_points(content, positions)
+        if len(ranges) == 0:
+            return Self([Span(content^, base)])
+
+        var boundaries: List[Int] = [0]
+        var byte_offset = 0
+        for grapheme in content.graphemes():
+            byte_offset += grapheme.byte_length()
+            boundaries.append(byte_offset)
+
+        var expanded = List[ByteRange]()
+        var start_boundary_index = 0
+        var end_boundary_index = 0
+        for range_index in range(len(ranges)):
+            var match_range = ranges[range_index]
+            while (
+                start_boundary_index + 1 < len(boundaries)
+                and boundaries[start_boundary_index + 1] <= match_range.start()
+            ):
+                start_boundary_index += 1
+            while (
+                end_boundary_index + 1 < len(boundaries)
+                and boundaries[end_boundary_index] < match_range.end()
+            ):
+                end_boundary_index += 1
+            var start = boundaries[start_boundary_index]
+            var end = boundaries[end_boundary_index]
+            if len(expanded) > 0 and start <= expanded[len(expanded) - 1].end():
+                var previous = expanded[len(expanded) - 1]
+                expanded[len(expanded) - 1] = ByteRange(
+                    previous.start(), max(previous.end(), end)
+                )
+            else:
+                expanded.append(ByteRange(start, end))
+
+        var spans = List[Span]()
+        var cursor = 0
+        var highlighted_style = base.then(patch)
+        for range_index in range(len(expanded)):
+            var match_range = expanded[range_index]
+            if cursor < match_range.start():
+                spans.append(
+                    Span(
+                        String(content[byte = cursor : match_range.start()]),
+                        base,
+                    )
+                )
+            spans.append(
+                Span(
+                    String(content[byte = match_range.start() : match_range.end()]),
+                    highlighted_style,
+                )
+            )
+            cursor = match_range.end()
+        if cursor < content.byte_length():
+            spans.append(Span(String(content[byte=cursor:]), base))
+        return Self(spans^)
 
     @staticmethod
     def raw(var content: String, alignment: Alignment = Alignment.START) -> Self:
@@ -276,6 +391,30 @@ struct Line(Copyable, Widget):
         var result = self.copy()
         result.apply_style_patch(patch)
         return result^
+
+    def bold(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.BOLD))
+
+    def italic(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.ITALIC))
+
+    def dim(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.DIM))
+
+    def underlined(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.UNDERLINED))
+
+    def reversed(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.REVERSED))
+
+    def crossed_out(self) -> Self:
+        return self.patched_style(StylePatch(add_modifiers=Style.CROSSED_OUT))
+
+    def fg(self, color: Color) -> Self:
+        return self.patched_style(StylePatch(foreground=color))
+
+    def bg(self, color: Color) -> Self:
+        return self.patched_style(StylePatch(background=color))
 
     def wrapped(
         self, maximum_width: Int, ambiguous_is_wide: Bool = False

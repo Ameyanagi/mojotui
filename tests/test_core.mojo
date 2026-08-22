@@ -40,6 +40,12 @@ def test_rect_uses_half_open_bounds() raises:
     assert_false(area.contains(Point(5, 5)))
 
 
+def test_buffer_cell_error_echoes_point_and_area() raises:
+    var buffer = Buffer(Rect(3, 4, 2, 1))
+    with assert_raises(contains="point (2, 4) is outside buffer area Rect(3, 4, 2, 1)"):
+        _ = buffer.cell(Point(2, 4))
+
+
 def test_rect_intersection() raises:
     var overlap = Rect(0, 0, 5, 4).intersection(Rect(3, 2, 5, 5))
     assert_equal(overlap.x, 3)
@@ -59,6 +65,25 @@ def test_rect_inset_clamps_to_empty() raises:
     assert_equal(inset.y, 21)
     assert_equal(inset.width, 1)
     assert_equal(inset.height, 1)
+
+
+def test_rect_centered_places_exact_extents() raises:
+    var centered = Rect(10, 20, 10, 8).centered(4, 2)
+    assert_true(centered.equals(Rect(13, 23, 4, 2)))
+
+
+def test_rect_centered_biases_odd_remainders_left_and_top() raises:
+    var centered = Rect(10, 20, 9, 7).centered(4, 2)
+    assert_true(centered.equals(Rect(12, 22, 4, 2)))
+
+
+def test_rect_centered_clamps_oversized_extents() raises:
+    var area = Rect(10, 20, 4, 3)
+    assert_true(area.centered(20, 30).equals(area))
+
+
+def test_rect_centered_returns_empty_at_empty_origin() raises:
+    assert_true(Rect(10, 20, 0, 7).centered(4, 3).equals(Rect(10, 20, 0, 0)))
 
 
 def test_geometry_translation_saturates_at_integer_boundaries() raises:
@@ -138,8 +163,18 @@ def test_buffer_differences_are_row_major_and_include_both_cells() raises:
 
 
 def test_buffer_differences_reject_mismatched_areas() raises:
-    with assert_raises(contains="different areas"):
+    with assert_raises(
+        contains=(
+            "cannot compare buffers with different areas; got"
+            " self=Rect(0, 0, 1, 1), other=Rect(0, 0, 2, 1)"
+        )
+    ):
         _ = Buffer(Rect(0, 0, 1, 1)).differences(Buffer(Rect(0, 0, 2, 1)))
+
+
+def test_color_index_rejects_out_of_range_values() raises:
+    with assert_raises(contains="color index must be within [0, 255]; got 300"):
+        _ = Color.indexed(300)
 
 
 def test_style_patches_preserve_unspecified_fields_and_compose() raises:
@@ -166,6 +201,44 @@ def test_style_patches_preserve_unspecified_fields_and_compose() raises:
     assert_true(composed.has(Style.BOLD))
     assert_true(composed.has(Style.UNDERLINED))
     assert_false(composed.has(Style.ITALIC))
+
+
+def test_style_shorthand_builders_chain_without_erasing_fields() raises:
+    var foreground = Color.rgb(255, 0, 0)
+    var background = Color.indexed(4)
+    var patch = (
+        StylePatch.plain()
+        .bold()
+        .italic()
+        .dim()
+        .underlined()
+        .reversed()
+        .crossed_out()
+        .fg(foreground)
+        .bg(background)
+    )
+    var resolved_patch = patch.resolved()
+    assert_true(resolved_patch.foreground.equals(foreground))
+    assert_true(resolved_patch.background.equals(background))
+    assert_true(resolved_patch.has(Style.BOLD))
+    assert_true(resolved_patch.has(Style.ITALIC))
+    assert_true(resolved_patch.has(Style.DIM))
+    assert_true(resolved_patch.has(Style.UNDERLINED))
+    assert_true(resolved_patch.has(Style.REVERSED))
+    assert_true(resolved_patch.has(Style.CROSSED_OUT))
+
+    var resolved = (
+        Style.plain()
+        .bold()
+        .italic()
+        .dim()
+        .underlined()
+        .reversed()
+        .crossed_out()
+        .fg(foreground)
+        .bg(background)
+    )
+    assert_true(resolved.equals(resolved_patch))
 
 
 def test_buffer_style_patch_preserves_wide_cell_footprint() raises:
@@ -242,7 +315,7 @@ def test_cell_from_grapheme_uses_unicode_width() raises:
 
 
 def test_cell_from_grapheme_rejects_multiple_graphemes() raises:
-    with assert_raises(contains="exactly one grapheme"):
+    with assert_raises(contains='cell symbol must be exactly one grapheme; got "ab"'):
         _ = Cell.from_grapheme("ab")
 
 
