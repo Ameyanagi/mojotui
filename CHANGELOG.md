@@ -13,13 +13,14 @@ This is the first source-tagged corrective release.
 - Bounded terminal input batches, control sequences, and bracketed paste with
   deterministic EOF finalization and permanent poison-on-rejection semantics.
 - Cross-terminal frame ownership checks, buffer and patch topology validation,
-  and full-redraw recovery after failed presentation.
+  checked partial-write handling, and full-redraw recovery after failed
+  presentation.
 - Same-input terminal-session overlap rejection plus PTY coverage for nested
-  sessions and host-construction rollback.
+  sessions, retryable split cleanup, and host-construction rollback.
 - Dirty-editor quit confirmation, display-column status for CJK/emoji, and
   actionable load/save errors.
 - A focused fuzzy input workflow and complete form example with traversal,
-  validation, submit, and cancel behavior.
+  validation, submit, cancel, and shared key/paste-to-editor mapping.
 - Installed-package coverage across the root and public subpackage imports.
 
 ### Changed

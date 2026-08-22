@@ -72,6 +72,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "${RUNNER_TEMP}/archive"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum --check "mojotui-${GITHUB_REF_NAME}.tar.gz.sha256"
+          else
+            shasum -a 256 --check "mojotui-${GITHUB_REF_NAME}.tar.gz.sha256"
+          fi
           mkdir -p "${RUNNER_TEMP}/source"
           tar -xzf "${RUNNER_TEMP}/archive/mojotui-${GITHUB_REF_NAME}.tar.gz" \
             --strip-components=1 -C "${RUNNER_TEMP}/source"
@@ -108,6 +114,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "${RUNNER_TEMP}/archive"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum --check "mojotui-${GITHUB_REF_NAME}.tar.gz.sha256"
+          else
+            shasum -a 256 --check "mojotui-${GITHUB_REF_NAME}.tar.gz.sha256"
+          fi
           mkdir -p "${RUNNER_TEMP}/source"
           tar -xzf "${RUNNER_TEMP}/archive/mojotui-${GITHUB_REF_NAME}.tar.gz" \
             --strip-components=1 -C "${RUNNER_TEMP}/source"

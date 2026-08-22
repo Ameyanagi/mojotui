@@ -502,10 +502,8 @@ struct TerminalApplicationHost[
             try:
                 self.application.terminal.flush()
             finally:
-                try:
-                    self.session.close()
-                finally:
-                    self.closed = True
+                self.session.close()
+        self.closed = True
 
     def __deinit__(deinit self):
         # Owned members provide non-raising fallback cleanup during unwinding.

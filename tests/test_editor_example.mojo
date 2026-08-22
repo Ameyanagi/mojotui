@@ -26,11 +26,13 @@ def test_editor_application_handles_text_paste_history_and_readonly_view() raise
     var initialized = application.init()
     var model = initialized.take_model()
     var initial = model.editor.engine.document.to_string()
+    assert_false(model.is_modified())
 
     var typed = application.on_input(model, InputEvent(KeyEvent.character("x")))
     assert_true(typed)
     _ = application.update(model, typed.take())
     assert_true(model.editor.engine.document.to_string().startswith("x"))
+    assert_true(model.is_modified())
 
     var undo = application.on_input(
         model,
@@ -39,6 +41,21 @@ def test_editor_application_handles_text_paste_history_and_readonly_view() raise
     assert_true(undo)
     _ = application.update(model, undo.take())
     assert_equal(model.editor.engine.document.to_string(), initial)
+    assert_false(model.is_modified())
+
+    var redo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("y", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, redo.take())
+    assert_true(model.editor.engine.document.to_string().startswith("x"))
+    assert_true(model.is_modified())
+    undo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("z", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, undo.take())
+    assert_false(model.is_modified())
 
     var paste = application.on_input(model, InputEvent(PasteEvent("界\n")))
     assert_true(paste)
@@ -70,10 +87,27 @@ def test_editor_adapter_loads_edits_and_saves_with_typed_messages() raises:
     assert_equal(len(loaded), 1)
     _ = application.update(model, loaded.pop(0))
     assert_equal(model.editor.engine.document.to_string(), "alpha\n")
+    assert_false(model.is_modified())
 
     var typed = application.on_input(model, InputEvent(KeyEvent.character("X")))
     assert_true(typed)
     _ = application.update(model, typed.take())
+    assert_equal(model.editor.engine.document.to_string(), "Xalpha\n")
+    assert_true(model.is_modified())
+
+    var undo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("z", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, undo.take())
+    assert_equal(model.editor.engine.document.to_string(), "alpha\n")
+    assert_false(model.is_modified())
+
+    var redo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("y", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, redo.take())
     assert_equal(model.editor.engine.document.to_string(), "Xalpha\n")
     assert_true(model.is_modified())
 
@@ -93,6 +127,39 @@ def test_editor_adapter_loads_edits_and_saves_with_typed_messages() raises:
     assert_equal(Path(target).read_text(), "Xalpha\n")
     assert_equal(model.status, "saved")
     assert_false(model.is_modified())
+
+    var second_edit = application.on_input(model, InputEvent(KeyEvent.character("Y")))
+    _ = application.update(model, second_edit.take())
+    assert_equal(model.editor.engine.document.to_string(), "XYalpha\n")
+    assert_true(model.is_modified())
+    undo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("z", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, undo.take())
+    assert_equal(model.editor.engine.document.to_string(), "Xalpha\n")
+    assert_false(model.is_modified())
+
+    undo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("z", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, undo.take())
+    assert_equal(model.editor.engine.document.to_string(), "alpha\n")
+    assert_true(model.is_modified())
+
+    var divergent = application.on_input(model, InputEvent(KeyEvent.character("X")))
+    _ = application.update(model, divergent.take())
+    # The bytes equal the saved file, but this is a distinct history branch.
+    assert_equal(model.editor.engine.document.to_string(), "Xalpha\n")
+    assert_true(model.is_modified())
+    redo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("y", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, redo.take())
+    assert_equal(model.editor.engine.document.to_string(), "Xalpha\n")
+    assert_true(model.is_modified())
 
 
 def test_editor_requires_confirmation_before_discarding_dirty_buffer() raises:

@@ -1,7 +1,7 @@
 from std.testing import TestSuite, assert_equal, assert_false, assert_true
 
 from examples.fuzzy import FuzzyApplication
-from mojotui import Buffer, InputEvent, KeyEvent, Rect
+from mojotui import Buffer, InputEvent, KeyEvent, PasteEvent, Rect
 
 
 def test_fuzzy_input_ignores_release_and_accepts_repeat() raises:
@@ -32,7 +32,8 @@ def test_fuzzy_uses_editor_commands_and_shows_empty_result_state() raises:
     for character in "qqqq".codepoints():
         var text = String()
         text.append(character)
-        _ = application.update(model, KeyEvent.character(text^))
+        var message = application.on_input(model, InputEvent(KeyEvent.character(text^)))
+        _ = application.update(model, message.take())
     assert_equal(model.input.engine.document.to_string(), "qqqq")
     assert_equal(len(model.matches), 0)
 
@@ -48,8 +49,22 @@ def test_fuzzy_uses_editor_commands_and_shows_empty_result_state() raises:
     assert_true("No matches" in rendered)
     assert_true("0 matches" in rendered)
 
-    _ = application.update(model, KeyEvent.named(KeyEvent.BACKSPACE))
+    var backspace = application.on_input(
+        model, InputEvent(KeyEvent.named(KeyEvent.BACKSPACE))
+    )
+    _ = application.update(model, backspace.take())
     assert_equal(model.input.engine.document.to_string(), "qqq")
+
+
+def test_fuzzy_maps_terminal_paste_to_one_text_input_command() raises:
+    var application = FuzzyApplication()
+    var initialized = application.init()
+    var model = initialized.take_model()
+    var pasted = application.on_input(model, InputEvent(PasteEvent("東京\n")))
+    assert_true(pasted)
+    _ = application.update(model, pasted.take())
+    assert_equal(model.input.engine.document.to_string(), "東京")
+    assert_equal(len(model.matches), 1)
 
 
 def main() raises:

@@ -1,7 +1,7 @@
 from std.testing import TestSuite, assert_equal, assert_false, assert_true
 
 from examples.form import FormApplication, handle_form_key, render_form
-from mojotui import Buffer, ControlFlow, KeyEvent, Rect
+from mojotui import Buffer, ControlFlow, InputEvent, KeyEvent, PasteEvent, Rect
 
 
 def test_form_focus_validation_toggle_submit_and_cancel() raises:
@@ -48,6 +48,16 @@ def test_form_borrowed_render_preserves_input_viewport() raises:
     var area = buffer.area.copy()
     render_form(model, area, buffer)
     assert_equal(model.name.top_line, 5)
+
+
+def test_form_maps_terminal_paste_to_one_text_input_command() raises:
+    var application = FormApplication()
+    var initialized = application.init()
+    var model = initialized.take_model()
+    var pasted = application.on_input(model, InputEvent(PasteEvent("東京\n")))
+    assert_true(pasted)
+    _ = application.update(model, pasted.take())
+    assert_equal(model.name.engine.document.to_string(), "東京")
 
 
 def main() raises:

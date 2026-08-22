@@ -2,7 +2,7 @@
 
 from std.io import FileDescriptor
 
-from ..platform import PosixTerminalMode, write_terminal_control
+from ..platform import PosixTerminalMode, write_all
 
 
 struct MouseCapture(Copyable, Equatable, ImplicitlyCopyable):
@@ -105,6 +105,7 @@ struct TerminalSession(Movable):
     var output_descriptor: Int
     var options: SessionOptions
     var mode: PosixTerminalMode
+    var presentation_active: Bool
     var active: Bool
 
     def __init__(
@@ -128,47 +129,63 @@ struct TerminalSession(Movable):
         self.output_descriptor = output_descriptor
         self.options = options.copy()
         self.mode = PosixTerminalMode(input_descriptor)
+        # Treat presentation as owned before the enter write because a failed
+        # transport may already have accepted a prefix.
+        self.presentation_active = True
         self.active = True
         try:
-            write_terminal_control(output_descriptor, session_enter_sequence(options))
+            write_all(output_descriptor, session_enter_sequence(options))
         except error:
-            # The transport may have accepted a prefix. Undo presentation and
-            # raw mode independently before surfacing the original failure.
             try:
-                write_terminal_control(
-                    output_descriptor, session_leave_sequence(options)
-                )
+                self.close()
             except:
                 pass
-            self.mode.restore_silently()
-            self.active = False
             raise error
+
+    def _sync_active(mut self):
+        self.active = self.mode.active or self.presentation_active
 
     def close(mut self) raises:
-        """Restore presentation and input state; repeated calls are harmless."""
+        """Retry each unfinished cleanup half; repeated calls are harmless."""
+        self._sync_active()
         if not self.active:
             return
-        self.active = False
-        try:
-            self.mode.restore()
-        except error:
+
+        if self.mode.active:
             try:
-                write_terminal_control(
-                    self.output_descriptor, session_leave_sequence(self.options)
+                self.mode.restore()
+            except raw_error:
+                # Presentation cleanup is independent and must still be
+                # attempted when restoring input mode fails.
+                if self.presentation_active:
+                    try:
+                        write_all(
+                            self.output_descriptor,
+                            session_leave_sequence(self.options),
+                        )
+                        self.presentation_active = False
+                    except:
+                        pass
+                self._sync_active()
+                raise raw_error
+
+        if self.presentation_active:
+            try:
+                write_all(
+                    self.output_descriptor,
+                    session_leave_sequence(self.options),
                 )
-            except:
-                pass
-            raise error
-        write_terminal_control(
-            self.output_descriptor, session_leave_sequence(self.options)
-        )
+                self.presentation_active = False
+            except presentation_error:
+                self._sync_active()
+                raise presentation_error
+        self._sync_active()
 
     def __deinit__(deinit self):
-        if self.active:
+        if self.mode.active:
             self.mode.restore_silently()
+        if self.presentation_active:
             try:
-                write_terminal_control(
-                    self.output_descriptor, session_leave_sequence(self.options)
-                )
+                write_all(self.output_descriptor, session_leave_sequence(self.options))
             except:
                 pass

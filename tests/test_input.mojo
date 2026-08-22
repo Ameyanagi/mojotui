@@ -447,6 +447,16 @@ def test_input_limits_reject_invalid_configuration() raises:
     with assert_raises(contains="paste limit must be positive"):
         _ = InputLimits(paste_bytes=0)
 
+    var mutated = InputLimits()
+    mutated.batch_bytes = 0
+    with assert_raises(contains="input batch limit must be positive"):
+        _ = InputParser(mutated)
+
+    var parser = InputParser()
+    parser.limits.paste_bytes = 0
+    with assert_raises(contains="paste limit must be positive"):
+        _ = parser.feed([UInt8(0x61)])
+
 
 def test_oversized_batch_permanently_poisons_parser() raises:
     var parser = InputParser(InputLimits(batch_bytes=2))
@@ -522,6 +532,28 @@ def test_eof_finalizes_bare_escape_and_rejects_future_input() raises:
     assert_true(key(events[0].copy()).code == KeyEvent.ESCAPE)
     with assert_raises(contains="already reached end of input"):
         _ = parser.feed([UInt8(0x61)])
+
+
+def test_empty_eof_finishes_without_events() raises:
+    var parser = InputParser()
+    assert_equal(len(parser.finish()), 0)
+    with assert_raises(contains="already reached end of input"):
+        _ = parser.flush_escape()
+
+
+def test_malformed_sequence_does_not_consume_following_valid_input() raises:
+    var parser = InputParser()
+    var sequence: List[UInt8] = [
+        UInt8(0x1B),
+        UInt8(0x5B),
+        UInt8(0x3B),
+        UInt8(0x75),
+        UInt8(0x78),
+    ]
+    var events = parser.feed(sequence^)
+    assert_equal(len(events), 2)
+    assert_true(events[0].isa[UnknownEvent]())
+    assert_equal(key(events[1].copy()).text, "x")
 
 
 def test_eof_in_incomplete_utf8_poison_parser() raises:

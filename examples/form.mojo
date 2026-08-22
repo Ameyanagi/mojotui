@@ -1,6 +1,7 @@
 """Focused form workflow with validation, submit, and cancel behavior."""
 
 from std.collections import List as MojoList, Optional
+from std.utils import Variant
 
 from mojotui import (
     AnsiBackend,
@@ -13,7 +14,6 @@ from mojotui import (
     Constraint,
     ControlFlow,
     EditorCommand,
-    EditorCommandKind,
     EditorState,
     FocusId,
     FocusManager,
@@ -33,7 +33,11 @@ from mojotui import (
     detect_terminal_capabilities,
     execute_text_input_command,
     render_line,
+    terminal_text_input_command,
 )
+
+
+comptime FormMessage = Variant[KeyEvent, EditorCommand]
 
 
 def _name_id() -> FocusId:
@@ -117,11 +121,7 @@ def handle_form_key(mut model: FormModel, key: KeyEvent) raises -> ControlFlow:
     if not model.focused(_name_id()):
         return ControlFlow.CONTINUE
 
-    var command: Optional[EditorCommand] = None
-    if key.code == KeyEvent.BACKSPACE:
-        command = EditorCommand(EditorCommandKind.DELETE_BACKWARD)
-    elif key.code == KeyEvent.CHARACTER and key.modifiers == KeyEvent.NO_MODIFIERS:
-        command = EditorCommand.insert(key.text)
+    var command = terminal_text_input_command(InputEvent(key.copy()))
     if command and execute_text_input_command(
         model.name, command.value(), model.clipboard
     ):
@@ -168,7 +168,7 @@ def render_form(model: FormModel, area: Rect, mut buffer: Buffer) raises:
 
 struct FormApplication(Application, Copyable):
     comptime Model = FormModel
-    comptime Message = KeyEvent
+    comptime Message = FormMessage
     comptime Effect = Bool
 
     def __init__(out self):
@@ -178,8 +178,18 @@ struct FormApplication(Application, Copyable):
         return InitResult[Self.Model, Self.Effect].ready(FormModel())
 
     def update(
-        mut self, mut model: Self.Model, var key: Self.Message
+        mut self, mut model: Self.Model, var message: Self.Message
     ) raises -> UpdateResult[Self.Effect]:
+        if message.isa[EditorCommand]():
+            if execute_text_input_command(
+                model.name,
+                message[EditorCommand],
+                model.clipboard,
+            ):
+                model.status = "Editing name"
+                return UpdateResult[Self.Effect].redraw_only()
+            return UpdateResult[Self.Effect].unchanged()
+        var key = message[KeyEvent].copy()
         var control = handle_form_key(model, key)
         if control == ControlFlow.EXIT:
             return UpdateResult[Self.Effect].exit(redraw=True)
@@ -191,8 +201,12 @@ struct FormApplication(Application, Copyable):
     def on_input(
         self, model: Self.Model, var event: InputEvent
     ) raises -> Optional[Self.Message]:
+        if model.focused(_name_id()):
+            var command = terminal_text_input_command(event)
+            if command:
+                return Self.Message(command.take())
         if event.isa[KeyEvent]():
-            return event[KeyEvent].copy()
+            return Self.Message(event[KeyEvent].copy())
         return None
 
 
@@ -211,7 +225,7 @@ struct FormAdapter(RuntimeAdapter):
     def stop(mut self, id: StringSlice) raises:
         pass
 
-    def take_messages(mut self) raises -> MojoList[KeyEvent]:
+    def take_messages(mut self) raises -> MojoList[FormMessage]:
         return []
 
     def close(mut self) raises:

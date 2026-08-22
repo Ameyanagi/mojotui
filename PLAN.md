@@ -844,11 +844,11 @@ documentation, terminal support matrix, and known-limitations page.
 The 2026-08-22 `v0.1.1` release candidate on macOS ARM64 uses stable Mojo
 `1.0.0`, Moji `0.1.0`, and Pixi `0.76.2`.
 
-- `pixi run --locked check` passes 299 Mojo tests across 33 test modules and
+- `pixi run --locked check` passes 306 Mojo tests across 33 test modules and
   all 20 compile-fail fixtures.
-- Eight examples build, and 11 PTY lifecycle cases pass, including overlapping
-  raw-session rejection, partial host-initialization rollback, dirty-editor
-  confirmation, and virtual-list navigation.
+- Eight examples build, and 15 PTY lifecycle cases pass, including overlapping
+  raw-session rejection, retryable cleanup halves, partial host-initialization
+  rollback, dirty-editor confirmation, and virtual-list navigation.
 - The unsafe audit finds 10 documented FFI calls in one allowlisted platform
   file and none elsewhere.
 - The local Conda package resolves exact public `mojo-compiler ==1.0.0` and

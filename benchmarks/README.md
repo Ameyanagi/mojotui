@@ -76,5 +76,5 @@ both p50 and p95; generating and highlighting the 24 visible rows produced
 107.331 µs for a full 80x24 ANSI frame, 75.358 µs for a one-cell change, and
 73.426 µs for an unchanged frame. Thus lazy formatting trades on-demand visible
 formatting for removal of the 50,000-row startup phase and an 84% lower sampled
-peak footprint. Re-run the suites on the target machine rather than treating
-these observations as universal constants.
+process peak in these two profiling workloads. Re-run the suites on the target
+machine rather than treating these observations as universal constants.

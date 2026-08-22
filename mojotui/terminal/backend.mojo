@@ -1,14 +1,13 @@
 """Statically dispatched terminal backends."""
 
 from std.collections import Optional
-from std.io import FileDescriptor
 from std.memory import ArcPointer
 
 from ..core.buffer import Buffer
 from ..core.capabilities import TerminalCapabilities
 from ..core.cell import Cell
 from ..core.geometry import Point, Rect, Size
-from ..platform import terminal_size
+from ..platform import terminal_size, write_all
 from .ansi import (
     _encode_ansi_inline_patch,
     _encode_ansi_patch,
@@ -187,7 +186,13 @@ struct Terminal[B: Backend](Movable):
 
     def clear(mut self) raises:
         """Clear backend output and reset terminal-owned frame history."""
-        self.backend.clear()
+        try:
+            self.backend.clear()
+        except error:
+            # A checked clear may have written a prefix before reporting a
+            # transport error. Keep logical history and repaint it completely.
+            self.force_full_redraw = True
+            raise error
         self.previous.clear()
         if self.available:
             self.available.value().clear()
@@ -404,19 +409,17 @@ struct AnsiBackend(Backend):
             output += presentation
             if self.terminal_capabilities.synchronized_output:
                 output += "\x1b[?2026l"
-            var descriptor = FileDescriptor(self.output_descriptor)
-            descriptor.write_string(output)
+            write_all(self.output_descriptor, output)
         if reset_screen:
             self.first_frame = False
         self.cursor = patch.cursor.copy()
 
     def clear(mut self) raises:
-        var output = FileDescriptor(self.output_descriptor)
         var encoded = String()
         if self.cursor:
             encoded += "\x1b[?25l"
         encoded += "\x1b[2J\x1b[H"
-        output.write_string(encoded)
+        write_all(self.output_descriptor, encoded)
         self.first_frame = False
         self.cursor = None
 
@@ -472,7 +475,7 @@ struct InlineBackend(Backend):
             return
         self.area = Rect(self.area.x, self.area.y, size.width, self.area.height)
 
-    def _return_to_anchor(mut self, mut output: String):
+    def _return_to_anchor(self, mut output: String):
         if not self.cursor:
             return
         var point = self.cursor.value().copy()
@@ -483,9 +486,8 @@ struct InlineBackend(Backend):
             output += String(downward)
             output += "B"
         output += "\r"
-        self.cursor = None
 
-    def _place_cursor(mut self, mut output: String, point: Point):
+    def _place_cursor(self, mut output: String, point: Point):
         var upward = self.area.bottom() - point.y
         if upward > 0:
             output += "\x1b["
@@ -498,7 +500,6 @@ struct InlineBackend(Backend):
             output += String(column)
             output += "C"
         output += "\x1b[?25h"
-        self.cursor = point.copy()
 
     def present(mut self, patch: FramePatch) raises:
         patch.validate()
@@ -527,12 +528,10 @@ struct InlineBackend(Backend):
                     ")",
                 )
             )
-        var output = FileDescriptor(self.output_descriptor)
         var encoded = String()
         self._return_to_anchor(encoded)
         if self.first_frame:
             encoded += inline_reserve_sequence(self.area.height)
-            self.first_frame = False
         elif patch.full_redraw:
             encoded += inline_clear_sequence(self.area.height)
         encoded += _encode_ansi_inline_patch(patch)
@@ -545,18 +544,20 @@ struct InlineBackend(Backend):
             presentation += encoded
             if self.terminal_capabilities.synchronized_output:
                 presentation += "\x1b[?2026l"
-            output.write_string(presentation)
+            write_all(self.output_descriptor, presentation)
+        self.first_frame = False
+        self.cursor = patch.cursor.copy()
 
-    def clear(mut self):
+    def clear(mut self) raises:
         """Erase the owned rows; the next presentation reserves them again."""
         if self.first_frame:
             return
         var encoded = String()
         self._return_to_anchor(encoded)
         encoded += inline_clear_sequence(self.area.height)
-        var output = FileDescriptor(self.output_descriptor)
-        output.write_string(encoded)
+        write_all(self.output_descriptor, encoded)
         self.first_frame = True
+        self.cursor = None
 
     def flush(mut self) raises:
         pass

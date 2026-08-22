@@ -10,5 +10,5 @@ from .posix import (
     poll_readable_pair,
     read_available,
     terminal_size,
-    write_terminal_control,
+    write_all,
 )

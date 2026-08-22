@@ -1,6 +1,7 @@
 """Minimal fzf-style picker with grapheme-safe match highlighting."""
 
 from std.collections import List as MojoList, Optional
+from std.utils import Variant
 
 from mojotui import (
     AnsiBackend,
@@ -11,7 +12,6 @@ from mojotui import (
     Command,
     Constraint,
     EditorCommand,
-    EditorCommandKind,
     EditorState,
     InitResult,
     InputEvent,
@@ -34,7 +34,11 @@ from mojotui import (
     detect_terminal_capabilities,
     execute_text_input_command,
     render_line,
+    terminal_text_input_command,
 )
+
+
+comptime FuzzyMessage = Variant[KeyEvent, EditorCommand]
 
 
 def _candidates() -> MojoList[String]:
@@ -133,20 +137,6 @@ def _handle_key(mut model: FuzzyModel, key: KeyEvent) raises -> Bool:
         if model.selection.selected:
             model.chosen = model.matches[Int(model.selection.selected.value())].copy()
             return True
-    elif key.code == KeyEvent.BACKSPACE:
-        if execute_text_input_command(
-            model.input,
-            EditorCommand(EditorCommandKind.DELETE_BACKWARD),
-            model.clipboard,
-        ):
-            _reset_selection(model)
-    elif key.code == KeyEvent.CHARACTER and key.modifiers == KeyEvent.NO_MODIFIERS:
-        if execute_text_input_command(
-            model.input,
-            EditorCommand.insert(key.text),
-            model.clipboard,
-        ):
-            _reset_selection(model)
     return False
 
 
@@ -169,7 +159,7 @@ def _items(query: StringSlice, matches: MojoList[String]) raises -> MojoList[Lis
 
 struct FuzzyApplication(Application, Copyable):
     comptime Model = FuzzyModel
-    comptime Message = KeyEvent
+    comptime Message = FuzzyMessage
     comptime Effect = Bool
 
     def __init__(out self):
@@ -179,8 +169,18 @@ struct FuzzyApplication(Application, Copyable):
         return InitResult[Self.Model, Self.Effect].ready(FuzzyModel())
 
     def update(
-        mut self, mut model: Self.Model, var key: Self.Message
+        mut self, mut model: Self.Model, var message: Self.Message
     ) raises -> UpdateResult[Self.Effect]:
+        if message.isa[EditorCommand]():
+            if execute_text_input_command(
+                model.input,
+                message[EditorCommand],
+                model.clipboard,
+            ):
+                _reset_selection(model)
+                return UpdateResult[Self.Effect].redraw_only()
+            return UpdateResult[Self.Effect].unchanged()
+        var key = message[KeyEvent].copy()
         if not key.is_activation():
             return UpdateResult[Self.Effect].unchanged()
         if key.code == KeyEvent.ESCAPE or (
@@ -222,10 +222,13 @@ struct FuzzyApplication(Application, Copyable):
     def on_input(
         self, model: Self.Model, var event: InputEvent
     ) raises -> Optional[Self.Message]:
+        var command = terminal_text_input_command(event)
+        if command:
+            return Self.Message(command.take())
         if event.isa[KeyEvent]():
             var key = event[KeyEvent].copy()
             if key.is_activation():
-                return key^
+                return Self.Message(key^)
         return None
 
 

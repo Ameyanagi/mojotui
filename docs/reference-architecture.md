@@ -83,8 +83,10 @@ Escape timeout can reinterpret an incomplete control sequence.
 
 `TerminalSession` borrows descriptors and never closes them. It validates the
 output TTY before changing input mode, writes enter/leave controls through a
-checked partial-write loop, restores raw mode independently from presentation
-cleanup, and keeps non-raising destructor cleanup as a last resort.
+checked partial-write loop, and tracks raw-mode ownership independently from
+presentation ownership. Explicit close clears each half only after successful
+cleanup, so a repeated close or the non-raising destructor retries unfinished
+work.
 
 Stable Mojo 1.0 provides no safe mutable process-global registry for an exact
 device-wide lease. Mojotui instead rejects an input descriptor whose termios is
@@ -95,8 +97,9 @@ output TTY, nor can it exclude another process. Documentation therefore calls
 this an overlap guard, not a complete device lease.
 
 PTY coverage proves explicit close, implicit cleanup, raised application error,
-Ctrl-C, resize, split descriptors, same-input overlap rejection, and restoration
-when a later host field fails during construction.
+Ctrl-C, resize, split descriptors, retryable failure of either cleanup half,
+same-input overlap rejection, and restoration when a later host field fails
+during construction.
 
 ### Unicode policy
 

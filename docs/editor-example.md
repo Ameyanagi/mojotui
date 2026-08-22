@@ -33,8 +33,10 @@ changing or copying the document, history, selections, or stored viewport.
 through `LocalFileService` and returns typed completion messages. It is a small
 synchronous adapter for the example, not a general executor. A future adapter
 can run the same effects on Mojo's supported task runtime without changing the
-application or editor contracts. Save completions carry the document version,
-so a delayed completion cannot incorrectly mark newer edits as saved.
+application or editor contracts. Save completions carry the engine's exact,
+branch-aware history-state identity, so a delayed completion cannot incorrectly
+mark newer edits as saved. Comparing that identity is constant time even for a
+large document.
 
 ## Test it
 

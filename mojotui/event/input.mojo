@@ -343,6 +343,20 @@ struct InputLimits(Copyable):
         self.sequence_bytes = sequence_bytes
         self.paste_bytes = paste_bytes
 
+    def validate(self) raises:
+        """Revalidate fields after copying conventionally public Mojo state."""
+        if self.batch_bytes <= 0:
+            raise Error(
+                "input batch limit must be positive; got ", String(self.batch_bytes)
+            )
+        if self.sequence_bytes < 4:
+            raise Error(
+                "input sequence limit must be at least 4 bytes; got ",
+                String(self.sequence_bytes),
+            )
+        if self.paste_bytes <= 0:
+            raise Error("paste limit must be positive; got ", String(self.paste_bytes))
+
 
 struct InputParser(Movable):
     """Incrementally parse bounded, fragmented terminal input.
@@ -361,7 +375,8 @@ struct InputParser(Movable):
     var poison_reason: String
     var finished: Bool
 
-    def __init__(out self, limits: InputLimits = InputLimits.defaults()):
+    def __init__(out self, limits: InputLimits = InputLimits.defaults()) raises:
+        limits.validate()
         self.pending = List[UInt8]()
         self.cursor = 0
         self.paste_bytes = List[UInt8]()
@@ -372,6 +387,7 @@ struct InputParser(Movable):
         self.finished = False
 
     def _raise_if_unusable(self) raises:
+        self.limits.validate()
         if self.poisoned:
             raise Error("input parser is poisoned: ", self.poison_reason)
         if self.finished:

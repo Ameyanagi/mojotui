@@ -5,15 +5,21 @@ from mojotui import Document
 
 def test_document_insert_delete_replace_and_metrics() raises:
     var document = Document("hello\nworld")
+    var initial_revision = document.revision()
+    document.insert(0, "")
+    assert_true(document.revision() == initial_revision)
     assert_equal(document.byte_length(), 11)
     assert_equal(document.line_count(), 2)
     document.insert(5, ", safe")
+    assert_true(document.revision() != initial_revision)
     assert_equal(document.to_string(), "hello, safe\nworld")
     assert_equal(document.delete(5, 11), ", safe")
     assert_equal(document.to_string(), "hello\nworld")
     assert_equal(document.replace(6, 11, "Mojo"), "world")
     assert_equal(document.to_string(), "hello\nMojo")
     assert_equal(document.version, 3)
+    var same_content = Document(document.to_string())
+    assert_true(document.revision() != same_content.revision())
     document.validate()
 
 

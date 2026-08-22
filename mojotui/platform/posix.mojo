@@ -284,8 +284,8 @@ def read_available(descriptor: Int, limit: Int = 4096) raises -> List[UInt8]:
     return result^
 
 
-def write_terminal_control(descriptor: Int, content: StringSlice) raises:
-    """Write every control-sequence byte or report the first transport error."""
+def write_all(descriptor: Int, content: StringSlice) raises:
+    """Write every byte or report the first non-interrupt transport error."""
     var remaining = String(content)
     while remaining.byte_length() > 0:
         # SAFETY: `remaining` owns a live, null-terminated byte sequence for the
@@ -298,15 +298,17 @@ def write_terminal_control(descriptor: Int, content: StringSlice) raises:
             remaining.byte_length(),
         )
         if written < 0:
+            if get_errno().value == _EINTR:
+                continue
             raise Error(
-                "terminal control write failed for descriptor ",
+                "terminal write failed for descriptor ",
                 String(descriptor),
                 " with errno ",
                 String(get_errno().value),
             )
         if written == 0:
             raise Error(
-                "terminal control write made no progress for descriptor ",
+                "terminal write made no progress for descriptor ",
                 String(descriptor),
             )
         var suffix = String(remaining[byte = Int(written) :])

@@ -2,7 +2,7 @@
 
 from std.collections import List
 
-from .document import Document
+from .document import Document, DocumentRevision
 from .selection import Selection, SelectionSet
 
 
@@ -38,17 +38,23 @@ struct _Transaction(Copyable):
     var before_selections: SelectionSet
     var after_selections: SelectionSet
     var byte_cost: Int
+    var before_revision: DocumentRevision
+    var after_revision: DocumentRevision
 
     def __init__(
         out self,
         var edits: List[_AppliedEdit],
         before_selections: SelectionSet,
         after_selections: SelectionSet,
+        before_revision: DocumentRevision,
+        after_revision: DocumentRevision,
     ):
         self.edits = edits^
         self.before_selections = before_selections.copy()
         self.after_selections = after_selections.copy()
         self.byte_cost = 0
+        self.before_revision = before_revision.copy()
+        self.after_revision = after_revision.copy()
         for index in range(len(self.edits)):
             var cost = self.edits[index].byte_cost()
             if cost > Int.MAX - self.byte_cost:
@@ -147,6 +153,28 @@ struct EditorEngine(Movable):
             var removed = self.undo_stack.pop(0)
             self.undo_bytes = max(self.undo_bytes - removed.byte_cost, 0)
 
+    def _history_matches_current(self) -> Bool:
+        var current = self.document.revision()
+        if (
+            len(self.undo_stack) > 0
+            and current != self.undo_stack[len(self.undo_stack) - 1].after_revision
+        ):
+            return False
+        if (
+            len(self.redo_stack) > 0
+            and current != self.redo_stack[len(self.redo_stack) - 1].before_revision
+        ):
+            return False
+        return True
+
+    def _reject_stale_history(mut self) raises:
+        if self._history_matches_current():
+            return
+        raise Error(
+            "editor history is stale after direct document mutation; call"
+            " clear_history() or apply a new edit before undo/redo"
+        )
+
     @staticmethod
     def _saturating_cost_add(left: Int, right: Int) -> Int:
         if right > Int.MAX - left:
@@ -159,7 +187,27 @@ struct EditorEngine(Movable):
             return False
         Self._sort_descending(edits)
         self._validate_edits(edits)
+        var has_edit = False
+        for index in range(len(edits)):
+            if edits[index].start != edits[index].end or edits[index].text != "":
+                has_edit = True
+                break
+        if not has_edit:
+            return False
         var before_selections = self.selections.copy()
+        try:
+            before_selections.normalize(self.document)
+        except:
+            raise Error(
+                "editor selections are stale after direct document mutation;"
+                " set selections to valid document boundaries before applying edits"
+            )
+        # A caller may mutate the conventionally public document directly.
+        # Start a new history root rather than retaining transactions whose
+        # offsets and exact revision identities no longer describe this state.
+        if not self._history_matches_current():
+            self.clear_history()
+        var before_revision = self.document.revision()
         var applied = List[_AppliedEdit]()
         for index in range(len(edits)):
             var edit = edits[index].copy()
@@ -176,7 +224,14 @@ struct EditorEngine(Movable):
         var after_selections = Self._result_selections(applied)
         after_selections.normalize(self.document)
         self.selections = after_selections.copy()
-        var transaction = _Transaction(applied^, before_selections, after_selections)
+        var after_revision = self.document.revision()
+        var transaction = _Transaction(
+            applied^,
+            before_selections,
+            after_selections,
+            before_revision,
+            after_revision,
+        )
         self.redo_stack.clear()
         if self.max_transactions > 0 and self.max_history_bytes > 0:
             self.undo_bytes = Self._saturating_cost_add(
@@ -204,6 +259,7 @@ struct EditorEngine(Movable):
     def undo(mut self) raises -> Bool:
         if len(self.undo_stack) == 0:
             return False
+        self._reject_stale_history()
         var transaction = self.undo_stack.pop()
         for reverse_index in range(len(transaction.edits)):
             var index = len(transaction.edits) - reverse_index - 1
@@ -214,6 +270,7 @@ struct EditorEngine(Movable):
                 edit.before,
             )
         self.selections = transaction.before_selections.copy()
+        self.document._restore_revision(transaction.before_revision)
         self.undo_bytes = max(self.undo_bytes - transaction.byte_cost, 0)
         self.redo_stack.append(transaction^)
         return True
@@ -221,6 +278,7 @@ struct EditorEngine(Movable):
     def redo(mut self) raises -> Bool:
         if len(self.redo_stack) == 0:
             return False
+        self._reject_stale_history()
         var transaction = self.redo_stack.pop()
         for index in range(len(transaction.edits)):
             var edit = transaction.edits[index].copy()
@@ -230,6 +288,7 @@ struct EditorEngine(Movable):
                 edit.after,
             )
         self.selections = transaction.after_selections.copy()
+        self.document._restore_revision(transaction.after_revision)
         self.undo_bytes = Self._saturating_cost_add(
             self.undo_bytes, transaction.byte_cost
         )

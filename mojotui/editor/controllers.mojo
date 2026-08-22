@@ -3,7 +3,7 @@
 from std.collections import Optional
 
 from ..app.keymap import KeyChord, Keymap
-from ..event.input import KeyEvent
+from ..event.input import InputEvent, KeyEvent, PasteEvent
 from .commands import EditorCommand, EditorCommandKind
 
 
@@ -263,4 +263,26 @@ def text_input_action(
         and key.text != ""
     ):
         return EditorControllerAction.edit(EditorCommand.insert(key.text.copy()))
+    return None
+
+
+def terminal_text_input_command(
+    event: InputEvent,
+) -> Optional[EditorCommand]:
+    """Translate terminal text/backspace/paste into one editor command."""
+    if event.isa[PasteEvent]():
+        return EditorCommand.insert(event[PasteEvent].text.copy())
+    if not event.isa[KeyEvent]():
+        return None
+    var key = event[KeyEvent].copy()
+    if not key.is_activation():
+        return None
+    if key.code == KeyEvent.BACKSPACE:
+        return EditorCommand(EditorCommandKind.DELETE_BACKWARD)
+    if (
+        key.code == KeyEvent.CHARACTER
+        and key.modifiers == KeyEvent.NO_MODIFIERS
+        and key.text != ""
+    ):
+        return EditorCommand.insert(key.text.copy())
     return None

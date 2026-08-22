@@ -117,6 +117,23 @@ def test_options() -> SessionOptions:
     )
 
 
+def cleanup_options() -> SessionOptions:
+    return SessionOptions(
+        alternate_screen=True,
+        hide_cursor=False,
+        bracketed_paste=False,
+        focus_events=False,
+        mouse=MouseCapture.OFF,
+        keyboard_enhancement=False,
+    )
+
+
+def wait_for_byte() raises:
+    var storage = List[UInt8](length=1, fill=0)
+    var input = FileDescriptor(0)
+    _ = input.read_bytes(storage)
+
+
 def check_size(reactor: PosixReactor) raises:
     if reactor.last_size.width != 80 or reactor.last_size.height != 24:
         raise Error(
@@ -271,6 +288,62 @@ def host_initialization_failure() raises:
     _ = host.closed
 
 
+def cleanup_restore_retry(use_destructor: Bool) raises:
+    var session = TerminalSession(options=cleanup_options())
+    print("READY", flush=True)
+    wait_for_byte()
+    session.mode.descriptor = -1
+    try:
+        session.close()
+    except error:
+        if "terminal restoration failed" not in String(error):
+            raise Error("unexpected raw cleanup failure: ", error)
+        if not session.active or not session.mode.active:
+            raise Error("raw cleanup failure was not retained for retry")
+        if session.presentation_active:
+            raise Error("successful presentation cleanup remained pending")
+        print("RAW_PENDING", flush=True)
+        wait_for_byte()
+        session.mode.descriptor = 0
+        if use_destructor:
+            print("DESTRUCTOR_RETRY", flush=True)
+            return
+        session.close()
+        if session.active or session.mode.active or session.presentation_active:
+            raise Error("second close did not finish raw cleanup")
+        print("CLOSE_RETRY", flush=True)
+        return
+    raise Error("invalid raw descriptor unexpectedly restored")
+
+
+def cleanup_presentation_retry(use_destructor: Bool) raises:
+    var session = TerminalSession(options=cleanup_options())
+    print("READY", flush=True)
+    wait_for_byte()
+    session.output_descriptor = -1
+    try:
+        session.close()
+    except error:
+        if "terminal write failed" not in String(error):
+            raise Error("unexpected presentation cleanup failure: ", error)
+        if not session.active or session.mode.active:
+            raise Error("successful raw cleanup was not committed independently")
+        if not session.presentation_active:
+            raise Error("presentation cleanup failure was not retained for retry")
+        print("PRESENTATION_PENDING", flush=True)
+        wait_for_byte()
+        session.output_descriptor = 1
+        if use_destructor:
+            print("DESTRUCTOR_RETRY", flush=True)
+            return
+        session.close()
+        if session.active or session.mode.active or session.presentation_active:
+            raise Error("second close did not finish presentation cleanup")
+        print("CLOSE_RETRY", flush=True)
+        return
+    raise Error("invalid presentation descriptor unexpectedly succeeded")
+
+
 def main() raises:
     var args = argv()
     var mode = String(args[1]) if len(args) > 1 else String("normal")
@@ -292,5 +365,13 @@ def main() raises:
         overlapping_session_exit()
     elif mode == "host-init-error":
         host_initialization_failure()
+    elif mode == "cleanup-raw-close":
+        cleanup_restore_retry(False)
+    elif mode == "cleanup-raw-destructor":
+        cleanup_restore_retry(True)
+    elif mode == "cleanup-presentation-close":
+        cleanup_presentation_retry(False)
+    elif mode == "cleanup-presentation-destructor":
+        cleanup_presentation_retry(True)
     else:
         raise Error("unknown lifecycle probe mode")
