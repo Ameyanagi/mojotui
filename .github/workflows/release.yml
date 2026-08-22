@@ -1,16 +1,25 @@
-name: Release
+name: Release v0.1 source distribution
 
 on:
   push:
     tags:
-      - "v*"
+      - "v0.1.*"
 
 permissions:
   contents: read
 
 jobs:
+  verify:
+    name: Verify v0.1 release contract
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Match annotated tag and compiler to workspace metadata
+        run: bash scripts/check-release-contract.sh
+
   check:
-    name: Check ${{ matrix.name }}
+    name: Check v0.1 on ${{ matrix.name }}
+    needs: verify
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -21,7 +30,7 @@ jobs:
           - name: Linux ARM64
             os: ubuntu-24.04-arm
           - name: macOS ARM64
-            os: macos-14
+            os: macos-15
 
     steps:
       - uses: actions/checkout@v7
@@ -36,6 +45,8 @@ jobs:
     name: Publish source release
     needs: check
     runs-on: ubuntu-24.04
+    environment:
+      name: release
     permissions:
       contents: write
 

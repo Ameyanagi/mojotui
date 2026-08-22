@@ -7,8 +7,8 @@ borrows Ratatui's immediate-mode rendering model and familiar concepts, but it
 does not promise Rust or Ratatui API compatibility. The public API should feel
 native to Mojo and evolve with the language before 1.0.
 
-The first supported platforms are macOS and Linux on x86-64 or ARM64 where the
-pinned compiler package is available. The project targets Mojo
+The first supported platforms are macOS ARM64, Linux x86-64, and Linux ARM64,
+where the pinned compiler package is available. The project targets Mojo
 developers building native terminal applications. Python and `ncurses` are not
 runtime dependencies.
 
@@ -37,19 +37,19 @@ autoresizes, carries cursor intent, and commits only successful presentations.
 The application runtime and dashboard use that path. Stage B is implemented
 locally: public event, editor, layout, queue, style, and border semantic values
 are nominal types, and absence uses `Optional` rather than public sentinels.
-Eighteen compile-fail fixtures guard those boundaries. Stage C is implemented:
+Twenty compile-fail fixtures guard those boundaries. Stage C is implemented:
 composable style patches, underline colors, safe buffer and rich-text
 conveniences, explicit overflow, and directly renderable text values are in
 place. Stage D is implemented with Ratatui `0.30.2` fixtures, semantic
 constraint priorities, margins, and all six non-legacy flex modes. Stage E is
 implemented with word-wrapped/scrolled paragraphs, deeper blocks, multiline
-lists and tables, selection policies, footers, and `Fill`; chart and canvas
-families remain deliberately deferred. Stage F is implemented with startup
+lists and tables, selection policies, footers, and `Fill`; BarChart and Chart
+are now implemented, while Canvas remains deliberately deferred. Stage F is implemented with startup
 commands, default subscriptions, nominal exit control, adapter/application type
 binding, embedded and POSIX terminal hosts, dashboard migration, PTY lifecycle
 coverage, and documented API stability tiers.
 
-Stage G is implemented locally on the pinned Mojo 1.1 nightly. Adapter batches
+Stage G is implemented locally on pinned stable Mojo `1.0.0`. Adapter batches
 are retained losslessly across queue pressure, host turns have a finite message
 budget, subscriptions reconcile after each batch, and `HostSchedule` separates
 tick, Escape, frame, and adapter deadlines. Tick and resize messages coalesce
@@ -62,8 +62,11 @@ implemented locally: nominal capabilities, explicit profile fallbacks,
 light/dark/unknown adaptive colors, conservative environment detection,
 backend and terminal capability reporting, portable ANSI-16 output, dashboard
 integration, and migration documentation are covered by the locked suite.
-Stages I and J retain the existing extension and widget/performance
-commitments; the new color work does not replace or silently complete them.
+Stage I retains the existing extension commitments. Stage J is partially
+implemented: BarChart, Chart, lazy `VirtualList` rendering, indexed collection
+viewport jumps, and profiling benchmarks are shipped. Visible-line paragraph
+layout, broader configuration depth, Canvas, and any additional frame
+optimization remain gated work.
 
 The editor application dogfood milestone is implemented locally. A complete
 path-backed example now drives the non-copyable editor model through typed
@@ -145,7 +148,7 @@ design around heterogeneous collections of runtime trait objects. Use closed
 
 ### Strict types
 
-The pinned Mojo 1.1 nightly uses `def` as the standard function declaration
+The pinned stable Mojo `1.0.0` release uses `def` as the standard function declaration
 syntax. `fn` is deprecated upstream and is rejected by project policy and the
 warnings-as-errors build. This project preserves the strict semantics formerly
 associated with `fn`: arguments and returned values are statically typed,
@@ -154,10 +157,10 @@ compile-time generics, compiler warnings are errors, and dynamic escape-hatch
 types are prohibited from the library package. The machine-checked rules are
 documented in [`TYPE_SAFETY.md`](TYPE_SAFETY.md).
 
-### Nightly language policy
+### Stable language policy
 
-- Pin the newest verified Mojo nightly exactly in `pixi.toml` and `pixi.lock`;
-  never use an unbounded nightly dependency.
+- Pin stable Mojo `1.0.0` exactly in `pixi.toml`, `pixi.lock`, and the package
+  recipe. Do not add a prerelease compiler lane or an unbounded dependency.
 - Use `def` for functions, methods, closures, and function types. Do not add
   `fn`, including in examples or generated fixtures.
 - Use explicit typed arguments and return types, `raises` for fallibility,
@@ -165,11 +168,11 @@ documented in [`TYPE_SAFETY.md`](TYPE_SAFETY.md).
   initialization, and `deinit` for consuming deinitialization.
 - Prefer trait-constrained static generics and `comptime` control flow. Avoid
   dynamic erasure and private runtime/compiler APIs.
-- Keep imports explicit. Mojo 1.1 rejects implicit intra-package access and
+- Keep imports explicit. Mojo `1.0.0` rejects implicit intra-package access and
   combining same-named imported functions into an overload set.
-- Prefer safe standard-library values and operations. Nightly pointer and raw
+- Prefer safe standard-library values and operations. Pointer and raw
   memory APIs are permitted only inside the audited platform boundary.
-- Review the official nightly changelog before each toolchain bump, run the
+- Review the official stable release notes before each toolchain bump, run the
   complete locked check, and record any source migration in `docs/migration.md`.
 
 ### Explicit state and effects
@@ -548,7 +551,7 @@ Exit: a complete typed application needs no hand-written terminal plumbing,
 startup commands run through the adapter, all work is scoped on shutdown, and
 the renderer remains independently usable.
 
-#### Stage G: host correctness and nightly hardening
+#### Stage G: host correctness and compiler hardening
 
 - Make adapter-to-host delivery lossless under queue pressure. A host must not
   destroy the unconsumed tail of a transferred completion batch.
@@ -570,7 +573,7 @@ the renderer remains independently usable.
 Exit: oversized adapter batches are retained without loss, every host turn is
 bounded, periodic ticks progress under continuous input, resize is correct with
 separate descriptors and inline output, nested style tests retain prior
-attributes, and the full nightly validation suite passes.
+attributes, and the full stable-toolchain validation suite passes.
 
 #### Stage H: adaptive capabilities and portable themes
 
@@ -616,12 +619,19 @@ private Mojotui helpers.
 
 #### Stage J: widget depth and measured performance
 
-- Deepen Block, Gauge, LineGauge, Scrollbar, Sparkline, List, Table, and Tabs
-  before adding broad widget families.
-- Add BarChart first and Chart second. Defer Canvas until symbol merging,
-  overlay semantics, and terminal capability negotiation are stable.
-- Compose lazy visible-line paragraph layout and cache multiline collection
-  heights in caller-owned state where benchmarks demonstrate a benefit.
+The first measured slice is implemented. BarChart and Chart ship with semantic
+tests, `VirtualList` constructs only visible rows, and indexed List/Table
+viewport jumps avoid rescanning from row zero. Checked collection benchmarks
+and profiler modes document startup, frame-time, and memory tradeoffs.
+
+Remaining Stage J work will:
+
+- deepen configuration coverage for existing widgets before adding another
+  broad family;
+- compose lazy visible-line paragraph layout where profiling demonstrates a
+  benefit;
+- defer Canvas until symbol merging, overlay semantics, and terminal
+  capability negotiation are stable;
 - Optimize frame preparation and diffing in measured layers: first use safe
   flat scalar traversal, eliminate unchanged-cell copies, and specialize
   invariant-preserving bulk fill; then evaluate compact numeric cell metadata
@@ -639,7 +649,7 @@ Exit: common widgets cover their primary Ratatui configuration paths, data
 visualization has stable symbol/style contracts, large text or collection
 rendering remains proportional to the visible viewport, and retained render
 optimizations have checked-in semantic coverage plus reproducible before/after
-benchmarks on the pinned nightly.
+benchmarks on the pinned stable release.
 
 #### Editor application dogfood milestone
 
@@ -668,7 +678,7 @@ outside the existing audited platform layer.
 
 Deliverables:
 
-1. Pin the exact Mojo nightly in project configuration.
+1. Pin the exact stable Mojo release in project configuration.
 2. Add macOS and Linux environments and CI coverage.
 3. Prove package, trait, ownership, test, and benchmark conventions.
 4. Enter raw mode, query terminal size, read bytes, and restore state.
@@ -783,28 +793,41 @@ Initial performance targets:
 
 ## Release plan
 
-- `0.1`: rendering core, terminal backend, initial widgets, dashboard
-- `0.2`: application framework and reactor
-- `0.3`: editor engine and editor widget
-- `0.4`: forms, file services, and the runtime-neutral adapter boundary
-- `0.5`: frame transaction, terminal-owned renderer, nominal types, style
-  composition, and layout compatibility
-- `0.6`: deeper widgets, application host, and documented API stability tiers
-- `0.6.1`: lossless host backpressure, deadline scheduling, bounded turns,
-  descriptor/inline resize correctness, and inherited style composition
-- `0.6.2`: explicit terminal capabilities, portable light/dark themes, and
-  deterministic color-profile degradation
-- `0.6.3`: interactive editor example, borrowed-state editor rendering, typed
-  file effects, and editor PTY coverage
-- `0.7`: package boundaries, public symbols, extension testing, builders, and
-  reproducible Ratatui fixture provenance
-- `0.8`: deeper existing widgets, BarChart, Chart, and benchmark-driven visible
-  text/collection rendering
+No public tag has been created. Earlier planning used release-like labels for
+capability checkpoints; they did not identify published artifacts:
 
-Pre-1.0 minor releases may make breaking changes. Each release pins and names an
-exact tested Mojo nightly and includes migration notes. Source packages are the
-initial distribution format; precompiled packages wait for dependable compiler
-compatibility.
+| Earlier label | Completed, unpublished capability |
+| --- | --- |
+| `0.1` | Rendering core, terminal backend, initial widgets, and dashboard |
+| `0.2` | Application framework and reactor |
+| `0.3` | Editor engine and editor widget |
+| `0.4` | Forms, file services, and runtime-neutral adapter boundary |
+| `0.5` | Frame transactions, terminal-owned rendering, nominal types, style composition, and layout compatibility |
+| `0.6` | Deeper widgets, application host, and API stability tiers |
+| `0.6.1` | Lossless host backpressure, bounded scheduling, resize correctness, and inherited style composition |
+| `0.6.2` | Explicit terminal capabilities, portable themes, and deterministic color degradation |
+| `0.6.3` | Interactive editor example, borrowed-state rendering, typed file effects, and editor PTY coverage |
+
+The earlier `0.7` and `0.8` labels referred to Stage I and Stage J planning,
+not published releases. The public targets below replace those labels.
+
+`v0.1.0` is the first public release target. It includes all completed work
+above plus Stage I: dependency-directed public subpackages, validated symbols,
+headless extension testing, consistent builders, reproducible Ratatui fixtures,
+and installability gates. The distribution is one independently versioned
+`mojotui` library containing public subpackages and a top-level convenience
+package; those subpackages are not separate release artifacts.
+
+Stage J started before `v0.1.0`: BarChart, Chart, lazy `VirtualList` rendering,
+indexed collection viewport jumps, and their profiling benchmarks are shipped.
+The remaining visible-paragraph, configuration-depth, Canvas, GPU, and any
+benchmark-earned frame-optimization work follows the release gates.
+
+Pre-1.0 minor releases may make breaking changes. Each release pins and names
+one exact tested stable Mojo release and includes migration notes. The tagged source
+archive is canonical. A precompiled package may be published only after its
+recipe pins the compiler compatibility from `pixi.toml` and `pixi.lock` and
+passes fresh-prefix consumer tests on every supported target.
 
 Before the first public release, provide a quick start, architecture overview,
 dashboard tutorial, editor example, custom-widget guide, backend guide, API
@@ -812,39 +835,35 @@ documentation, terminal support matrix, and known-limitations page.
 
 ## Local release evidence
 
-The 2026-08-20 macOS arm64 run used Mojo
-`1.1.0.dev2026081813` and Pixi `0.76.2`.
+The 2026-08-22 macOS ARM64 PR #4 refresh used stable Mojo `1.0.0` and Pixi
+`0.76.2` after merging `main` at `5a65cdf`.
 
-- `pixi run check`: 217 Mojo tests passed across 29 test modules; 20
-  compile-fail fixtures also enforced migrated nominal API boundaries.
-- All three examples built, and PTY tests passed normal close, implicit
-  destruction, raised error, hosted inline application, Ctrl-C, resize, and
-  interactive editor startup/quit cases.
-- Formatting passed; the package precompiled with `--Werror`.
+- `pixi run check`: 280 Mojo tests passed across 32 test modules; 20
+  compile-fail fixtures enforced nominal API boundaries.
+- Seven examples built, and PTY tests passed normal close, implicit
+  destruction, raised error, hosted inline application, Ctrl-C, resize, split
+  descriptors, editor startup/quit, and virtual-list navigation cases.
+- Formatting and README snippet checks passed; the package precompiled with
+  `--Werror --warn-on-unstable-apis`; release-contract tests accepted the exact
+  stable pin and rejected non-exact requirements.
 - The strict-type policy found no obsolete `fn` declarations, `AnyType`, or
   `PythonObject` use in the library.
 - The unsafe audit found nine documented FFI calls in one allowlisted platform
   file and none elsewhere.
-- After safe flat diffing and invariant-preserving bulk fill, three 80x24
-  benchmark runs had medians of 74.19 us for a full ANSI frame, 34.00 us for a
-  one-cell diff, and 33.21 us for an unchanged frame: about 13,479, 29,413, and
-  30,112 frames per second. Against the immediately preceding local medians of
-  138.36 us and 59.10 us, full and one-cell latency fell by about 46% and 42%.
-- An isolated stage run attributed only about 10.5 us of a one-cell operation
-  to scalar diffing. SIMD remains deferred because a packed shadow
-  representation would add mutation and memory costs without a demonstrated
-  end-to-end gain; no unsafe operation was added.
-- The 10 MiB editor regression benchmark measured 3.70 us per middle edit,
-  2.82 us per undo/redo operation, and 617.48 us per 80x24 viewport render.
+- The Conda recipe pins `mojo-compiler =1.0.0`; its package task builds the
+  precompiled library and runs an installed-package consumer smoke test.
+- Current collection profiling evidence and reproduction commands live in
+  `benchmarks/README.md`; this refresh does not relabel older toolchain timing
+  samples as stable-`1.0.0` measurements.
 
 The compiler distribution links against a newer macOS deployment target than
 the local build target and emits linker warnings during executable builds. The
 builds exit successfully. This toolchain warning is outside Mojotui source.
 
-GitHub Actions run `32193144975` passed the same locked check on macOS ARM64,
-Linux ARM64, and Linux x86-64. The CI workflow runs on pushes and pull requests.
-A separate tag workflow repeats the matrix and creates a source release only
-after every target passes.
+The CI workflow runs the locked suite on macOS ARM64, Linux ARM64, and Linux
+x86-64 and runs the installed-package smoke on Linux x86-64 for pushes and pull
+requests. A separate tag workflow repeats the source matrix and creates a
+source release only after every target passes.
 
 ## Risk register
 
@@ -854,7 +873,7 @@ after every target passes.
 | POSIX ABIs differ | Use a narrow audited boundary and allow a minimal C shim. |
 | Dynamic trait objects are unavailable | Use static generics, immediate rendering, and closed variants. |
 | Grapheme count differs from terminal width | Use moji's versioned width tables and conformance tests. |
-| Nightly compiler changes break source | Pin exact versions and upgrade through tested commits. |
+| Compiler upgrades break source | Keep stable `1.0.0` exact and upgrade only through tested commits. |
 | Editor scope delays usable rendering | Ship it as an independent later subsystem. |
 | Terminal state leaks after failure | Use a session guard and PTY lifecycle tests. |
 | Unsafe optimization spreads | Enforce a zero-default budget and an explicit allowlist in CI. |

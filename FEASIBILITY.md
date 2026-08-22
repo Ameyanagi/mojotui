@@ -4,17 +4,17 @@
 
 Proceed with the project. The rendering, Unicode, static-generic API, terminal
 lifecycle, input parsing, POSIX polling, and performance experiments are viable
-on the pinned Mojo nightly. The complete locked check passes in GitHub Actions
+on the pinned stable Mojo release. The complete locked check passes in GitHub Actions
 on macOS ARM64, Linux ARM64, and Linux x86-64.
 
 ## Tested toolchain
 
-- Mojo `1.1.0.dev2026081813` (`8cd05901`)
+- Mojo `1.0.0`
 - Pixi `0.76.2`
 - Unicode width data `17.0.0`, provided by the installed moji package
 - Workspace targets: `osx-arm64`, `linux-64`, and `linux-aarch64`
 
-`pixi.lock` resolves the exact Mojo build for every target. The GitHub Actions
+`pixi.lock` resolves Mojo `1.0.0` for every target. The GitHub Actions
 matrix runs `pixi run --locked check` on ARM64 macOS plus x86-64 and ARM64
 Linux runners.
 
