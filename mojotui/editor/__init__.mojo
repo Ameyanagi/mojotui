@@ -2,6 +2,7 @@
 
 from .document import (
     Document,
+    DocumentRevision,
     MarkerAffinity,
     MarkerId,
     PieceSource,
@@ -33,6 +34,7 @@ from .controllers import (
     EditorControllerAction,
     default_editor_keymap,
     emacs_editor_keymap,
+    terminal_text_input_command,
     text_input_action,
     vim_insert_keymap,
     vim_normal_keymap,

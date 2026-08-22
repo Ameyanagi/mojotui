@@ -73,6 +73,7 @@ from .core import (
 from .event import (
     FocusEvent,
     InputEvent,
+    InputLimits,
     InputParser,
     KeyCode,
     KeyEvent,
@@ -96,6 +97,7 @@ from .forms import (
 from .editor import (
     CursorMotion,
     Document,
+    DocumentRevision,
     Edit,
     Editor,
     EditorCommand,
@@ -132,6 +134,7 @@ from .editor import (
     offset_for_display_column,
     previous_grapheme_offset,
     selected_text,
+    terminal_text_input_command,
     text_input_action,
     vim_insert_keymap,
     vim_normal_keymap,

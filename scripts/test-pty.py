@@ -82,7 +82,7 @@ def run_case(
         else:
             os.write(master, b"x")
 
-        expected_success = mode != "error"
+        expected_success = mode not in ("error", "host-init-error")
         deadline = time.monotonic() + READ_TIMEOUT_SECONDS
         while process.poll() is None and time.monotonic() < deadline:
             readable, _, _ = select.select([master], [], [], 0.1)
@@ -166,6 +166,90 @@ def run_split_descriptor_case(binary: Path) -> None:
         os.close(output_slave)
 
 
+def run_split_cleanup_case(binary: Path, mode: str) -> None:
+    """Inject one cleanup failure and prove close/destruction retries it."""
+    input_master, input_slave = pty.openpty()
+    output_master, output_slave = pty.openpty()
+    try:
+        original_input = termios.tcgetattr(input_slave)
+        process = subprocess.Popen(
+            [str(binary), mode],
+            stdin=input_slave,
+            stdout=output_slave,
+            stderr=output_slave,
+            close_fds=True,
+        )
+        output = read_until(output_master, process, b"READY")
+        raw_input = termios.tcgetattr(input_slave)
+        if raw_input[3] & (termios.ICANON | termios.ECHO):
+            raise AssertionError(f"{mode}: input did not enter raw mode")
+
+        os.write(input_master, b"x")
+        raw_failure = mode.startswith("cleanup-raw-")
+        pending_marker = b"RAW_PENDING" if raw_failure else b"PRESENTATION_PENDING"
+        pending_output = read_until(output_master, process, pending_marker)
+        output += pending_output
+        pending_attributes = termios.tcgetattr(input_slave)
+        pending_is_raw = not bool(
+            pending_attributes[3] & (termios.ICANON | termios.ECHO)
+        )
+        if pending_is_raw != raw_failure:
+            raise AssertionError(
+                f"{mode}: cleanup halves did not commit independently"
+            )
+        if raw_failure and b"\x1b[?1049l" not in pending_output:
+            raise AssertionError(f"{mode}: successful leave sequence was missing")
+        if not raw_failure and b"\x1b[?1049l" in pending_output:
+            raise AssertionError(f"{mode}: failed leave sequence looked committed")
+
+        os.write(input_master, b"x" if raw_failure else b"x\n")
+        retry_marker = (
+            b"DESTRUCTOR_RETRY" if mode.endswith("-destructor") else b"CLOSE_RETRY"
+        )
+        output += read_until(output_master, process, retry_marker)
+        deadline = time.monotonic() + READ_TIMEOUT_SECONDS
+        while process.poll() is None and time.monotonic() < deadline:
+            readable, _, _ = select.select([output_master], [], [], 0.1)
+            if readable:
+                try:
+                    output += os.read(output_master, 4096)
+                except OSError:
+                    break
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+            raise AssertionError(f"{mode}: child timed out; output={output!r}")
+        while True:
+            readable, _, _ = select.select([output_master], [], [], 0)
+            if not readable:
+                break
+            try:
+                chunk = os.read(output_master, 4096)
+            except OSError:
+                break
+            if not chunk:
+                break
+            output += chunk
+        if process.returncode != 0:
+            raise AssertionError(
+                f"{mode}: expected success, got {process.returncode}; output={output!r}"
+            )
+        if output.count(b"\x1b[?1049l") != 1:
+            raise AssertionError(
+                f"{mode}: expected exactly one complete leave; output={output!r}"
+            )
+        restored_input = termios.tcgetattr(input_slave)
+        if comparable_attributes(restored_input) != comparable_attributes(
+            original_input
+        ):
+            raise AssertionError(f"{mode}: input attributes were not restored")
+    finally:
+        os.close(input_master)
+        os.close(input_slave)
+        os.close(output_master)
+        os.close(output_slave)
+
+
 def run_editor_case(binary: Path) -> None:
     """Start the real editor host, quit through input, and verify restoration."""
     master, slave = pty.openpty()
@@ -184,6 +268,14 @@ def run_editor_case(binary: Path) -> None:
         if raw[3] & (termios.ICANON | termios.ECHO):
             raise AssertionError("editor: terminal did not enter raw mode")
 
+        os.write(master, b"x")
+        output += read_until(master, process, b"edited")
+        os.write(master, b"\x11")
+        # The renderer positions each status word independently, so ANSI cursor
+        # sequences can appear between "unsaved" and "changes" in the byte stream.
+        output += read_until(master, process, b"unsaved")
+        if process.poll() is not None:
+            raise AssertionError("editor: first dirty Ctrl-Q exited without confirmation")
         os.write(master, b"\x11")
         deadline = time.monotonic() + READ_TIMEOUT_SECONDS
         while process.poll() is None and time.monotonic() < deadline:
@@ -266,11 +358,25 @@ def main() -> int:
         )
         return 2
     binary = Path(sys.argv[1]).resolve()
-    for mode in ("normal", "implicit", "error", "host"):
+    for mode in (
+        "normal",
+        "implicit",
+        "error",
+        "host",
+        "overlap",
+        "host-init-error",
+    ):
         run_case(binary, mode)
     run_case(binary, "control-c", send_control_c=True)
     run_case(binary, "resize", resize=True)
     run_split_descriptor_case(binary)
+    for cleanup_mode in (
+        "cleanup-raw-close",
+        "cleanup-raw-destructor",
+        "cleanup-presentation-close",
+        "cleanup-presentation-destructor",
+    ):
+        run_split_cleanup_case(binary, cleanup_mode)
     if len(sys.argv) == 3:
         run_editor_case(Path(sys.argv[2]).resolve())
     elif len(sys.argv) == 4:
@@ -278,7 +384,7 @@ def main() -> int:
         run_virtual_list_case(Path(sys.argv[3]).resolve())
     print(
         "PTY lifecycle tests passed "
-        "(normal, implicit, error, host, control-c, resize, split descriptors"
+        "(normal, implicit, error, host, overlap, host-init-error, control-c, resize, split descriptors, cleanup retries"
         + (", editor" if len(sys.argv) >= 3 else "")
         + (", virtual-list" if len(sys.argv) == 4 else "")
         + ")."

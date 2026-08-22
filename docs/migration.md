@@ -4,6 +4,10 @@ Mojotui is still pre-1.0, so the modernization work described in
 [`PLAN.md`](../PLAN.md) can make intentional breaking changes. This page keeps
 the mechanical migrations in one place.
 
+Migrating from the `0.1.0` artifact: `InputParser.__init__()`, `feed()`,
+`flush_escape()`, and `finish()` now `raises` when configuration, bounded
+input, or incomplete input is rejected.
+
 ## Terminal-owned render transactions
 
 Applications no longer allocate the root `Buffer` and ask a backend to compare

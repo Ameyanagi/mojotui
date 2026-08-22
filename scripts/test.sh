@@ -12,9 +12,12 @@ mojo build -I . examples/counter.mojo -o .pixi/test-bin/counter
 mojo build -I . examples/dashboard.mojo -o .pixi/test-bin/dashboard
 mojo build -I . examples/editor.mojo -o .pixi/test-bin/editor
 mojo build -I . examples/fuzzy.mojo -o .pixi/test-bin/fuzzy
+mojo build -I . examples/form.mojo -o .pixi/test-bin/form
 mojo build -I . examples/virtual_list.mojo -o .pixi/test-bin/virtual-list
 mojo build -I . tests/fixtures/session_probe.mojo -o .pixi/test-bin/session-probe
+mojo build -I . tests/fixtures/short_write_probe.mojo -o .pixi/test-bin/short-write-probe
 python scripts/test-pty.py \
   .pixi/test-bin/session-probe \
   .pixi/test-bin/editor \
   .pixi/test-bin/virtual-list
+python scripts/test-short-write.py .pixi/test-bin/short-write-probe

@@ -41,9 +41,12 @@ shorts. Mojo passes an initialized four-element `UInt16` array with the native
 
 ## Ordinary I/O
 
-Byte reads use the standard library's `FileDescriptor.read_bytes()` rather
-than another Mojotui pointer-based wrapper. Terminal control writes likewise
-use `FileDescriptor` in the public session layer.
+Byte reads use the standard library's `FileDescriptor.read_bytes()`. Terminal
+presentation and session-control writes use a narrow `write(2)` loop here
+because the standard library convenience API cannot report partial writes. The
+loop retains no pointer, retries interrupts, rejects other errors and zero
+progress, and commits terminal history or lifecycle ownership only after the
+complete write succeeds.
 
 ## Atomic file replacement
 

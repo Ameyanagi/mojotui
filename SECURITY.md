@@ -5,5 +5,6 @@ private vulnerability reporting for this repository. If that is unavailable,
 contact `contact@ameyanagi.com` with the repository name and a minimal
 reproduction.
 
-Only the latest development branch is supported before the first release.
-Security support windows will be documented when stable versions exist.
+The latest `0.1.x` release and the current `main` branch receive security fixes.
+The untagged `0.1.0` channel artifact is superseded and unsupported because its
+compiler runtime constraint was too broad.

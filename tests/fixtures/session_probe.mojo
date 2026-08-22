@@ -1,10 +1,12 @@
 """PTY child used by the terminal lifecycle integration tests."""
 
 from std.collections import List, Optional
+from std.io import FileDescriptor
 from std.sys import argv
 
 from mojotui import (
     Application,
+    Backend,
     Buffer,
     Cell,
     Command,
@@ -17,6 +19,7 @@ from mojotui import (
     MouseCapture,
     PosixReactor,
     Rect,
+    FramePatch,
     RuntimeAdapter,
     SessionOptions,
     Subscription,
@@ -24,6 +27,28 @@ from mojotui import (
     TerminalSession,
     UpdateResult,
 )
+
+
+struct BlockingFailBackend(Backend):
+    """Wait until the PTY observes raw mode, then fail host construction."""
+
+    def __init__(out self):
+        pass
+
+    def viewport(mut self) raises -> Rect:
+        var storage = List[UInt8](length=1, fill=0)
+        var input = FileDescriptor(0)
+        _ = input.read_bytes(storage)
+        raise Error("intentional backend initialization failure")
+
+    def present(mut self, patch: FramePatch) raises:
+        pass
+
+    def clear(mut self) raises:
+        pass
+
+    def flush(mut self) raises:
+        pass
 
 
 struct HostProbeApplication(Application, Copyable):
@@ -90,6 +115,23 @@ def test_options() -> SessionOptions:
         mouse=MouseCapture.OFF,
         keyboard_enhancement=False,
     )
+
+
+def cleanup_options() -> SessionOptions:
+    return SessionOptions(
+        alternate_screen=True,
+        hide_cursor=False,
+        bracketed_paste=False,
+        focus_events=False,
+        mouse=MouseCapture.OFF,
+        keyboard_enhancement=False,
+    )
+
+
+def wait_for_byte() raises:
+    var storage = List[UInt8](length=1, fill=0)
+    var input = FileDescriptor(0)
+    _ = input.read_bytes(storage)
 
 
 def check_size(reactor: PosixReactor) raises:
@@ -218,6 +260,90 @@ def split_descriptor_resize_exit() raises:
     raise Error("split-descriptor inline resize was not observed")
 
 
+def overlapping_session_exit() raises:
+    var session = TerminalSession(options=test_options())
+    try:
+        var overlapping = TerminalSession(options=test_options())
+        overlapping.close()
+    except error:
+        if "already in raw mode" not in String(error):
+            raise Error("overlapping session failed for an unexpected reason: ", error)
+        print("READY", flush=True)
+        var reactor = PosixReactor()
+        wait_for_input(reactor)
+        session.close()
+        return
+    raise Error("overlapping terminal session unexpectedly acquired the same TTY")
+
+
+def host_initialization_failure() raises:
+    print("READY", flush=True)
+    var host = TerminalApplicationHost(
+        HostProbeAdapter(),
+        HostProbeApplication(),
+        ManualClock(),
+        BlockingFailBackend(),
+        options=test_options(),
+    )
+    _ = host.closed
+
+
+def cleanup_restore_retry(use_destructor: Bool) raises:
+    var session = TerminalSession(options=cleanup_options())
+    print("READY", flush=True)
+    wait_for_byte()
+    session.mode.descriptor = -1
+    try:
+        session.close()
+    except error:
+        if "terminal restoration failed" not in String(error):
+            raise Error("unexpected raw cleanup failure: ", error)
+        if not session.active or not session.mode.active:
+            raise Error("raw cleanup failure was not retained for retry")
+        if session.presentation_active:
+            raise Error("successful presentation cleanup remained pending")
+        print("RAW_PENDING", flush=True)
+        wait_for_byte()
+        session.mode.descriptor = 0
+        if use_destructor:
+            print("DESTRUCTOR_RETRY", flush=True)
+            return
+        session.close()
+        if session.active or session.mode.active or session.presentation_active:
+            raise Error("second close did not finish raw cleanup")
+        print("CLOSE_RETRY", flush=True)
+        return
+    raise Error("invalid raw descriptor unexpectedly restored")
+
+
+def cleanup_presentation_retry(use_destructor: Bool) raises:
+    var session = TerminalSession(options=cleanup_options())
+    print("READY", flush=True)
+    wait_for_byte()
+    session.output_descriptor = -1
+    try:
+        session.close()
+    except error:
+        if "terminal write failed" not in String(error):
+            raise Error("unexpected presentation cleanup failure: ", error)
+        if not session.active or session.mode.active:
+            raise Error("successful raw cleanup was not committed independently")
+        if not session.presentation_active:
+            raise Error("presentation cleanup failure was not retained for retry")
+        print("PRESENTATION_PENDING", flush=True)
+        wait_for_byte()
+        session.output_descriptor = 1
+        if use_destructor:
+            print("DESTRUCTOR_RETRY", flush=True)
+            return
+        session.close()
+        if session.active or session.mode.active or session.presentation_active:
+            raise Error("second close did not finish presentation cleanup")
+        print("CLOSE_RETRY", flush=True)
+        return
+    raise Error("invalid presentation descriptor unexpectedly succeeded")
+
+
 def main() raises:
     var args = argv()
     var mode = String(args[1]) if len(args) > 1 else String("normal")
@@ -235,5 +361,17 @@ def main() raises:
         hosted_exit()
     elif mode == "split-descriptors":
         split_descriptor_resize_exit()
+    elif mode == "overlap":
+        overlapping_session_exit()
+    elif mode == "host-init-error":
+        host_initialization_failure()
+    elif mode == "cleanup-raw-close":
+        cleanup_restore_retry(False)
+    elif mode == "cleanup-raw-destructor":
+        cleanup_restore_retry(True)
+    elif mode == "cleanup-presentation-close":
+        cleanup_presentation_retry(False)
+    elif mode == "cleanup-presentation-destructor":
+        cleanup_presentation_retry(True)
     else:
         raise Error("unknown lifecycle probe mode")

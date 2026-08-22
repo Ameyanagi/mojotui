@@ -5,6 +5,7 @@ from std.testing import TestSuite, assert_equal, assert_false, assert_true
 from examples.editor import EditorApplication, EditorAdapter, render_editor_example
 from mojotui import (
     Buffer,
+    ControlFlow,
     InputEvent,
     KeyEvent,
     PasteEvent,
@@ -25,11 +26,13 @@ def test_editor_application_handles_text_paste_history_and_readonly_view() raise
     var initialized = application.init()
     var model = initialized.take_model()
     var initial = model.editor.engine.document.to_string()
+    assert_false(model.is_modified())
 
     var typed = application.on_input(model, InputEvent(KeyEvent.character("x")))
     assert_true(typed)
     _ = application.update(model, typed.take())
     assert_true(model.editor.engine.document.to_string().startswith("x"))
+    assert_true(model.is_modified())
 
     var undo = application.on_input(
         model,
@@ -38,6 +41,21 @@ def test_editor_application_handles_text_paste_history_and_readonly_view() raise
     assert_true(undo)
     _ = application.update(model, undo.take())
     assert_equal(model.editor.engine.document.to_string(), initial)
+    assert_false(model.is_modified())
+
+    var redo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("y", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, redo.take())
+    assert_true(model.editor.engine.document.to_string().startswith("x"))
+    assert_true(model.is_modified())
+    undo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("z", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, undo.take())
+    assert_false(model.is_modified())
 
     var paste = application.on_input(model, InputEvent(PasteEvent("界\n")))
     assert_true(paste)
@@ -69,10 +87,27 @@ def test_editor_adapter_loads_edits_and_saves_with_typed_messages() raises:
     assert_equal(len(loaded), 1)
     _ = application.update(model, loaded.pop(0))
     assert_equal(model.editor.engine.document.to_string(), "alpha\n")
+    assert_false(model.is_modified())
 
     var typed = application.on_input(model, InputEvent(KeyEvent.character("X")))
     assert_true(typed)
     _ = application.update(model, typed.take())
+    assert_equal(model.editor.engine.document.to_string(), "Xalpha\n")
+    assert_true(model.is_modified())
+
+    var undo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("z", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, undo.take())
+    assert_equal(model.editor.engine.document.to_string(), "alpha\n")
+    assert_false(model.is_modified())
+
+    var redo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("y", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, redo.take())
     assert_equal(model.editor.engine.document.to_string(), "Xalpha\n")
     assert_true(model.is_modified())
 
@@ -92,6 +127,89 @@ def test_editor_adapter_loads_edits_and_saves_with_typed_messages() raises:
     assert_equal(Path(target).read_text(), "Xalpha\n")
     assert_equal(model.status, "saved")
     assert_false(model.is_modified())
+
+    var second_edit = application.on_input(model, InputEvent(KeyEvent.character("Y")))
+    _ = application.update(model, second_edit.take())
+    assert_equal(model.editor.engine.document.to_string(), "XYalpha\n")
+    assert_true(model.is_modified())
+    undo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("z", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, undo.take())
+    assert_equal(model.editor.engine.document.to_string(), "Xalpha\n")
+    assert_false(model.is_modified())
+
+    undo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("z", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, undo.take())
+    assert_equal(model.editor.engine.document.to_string(), "alpha\n")
+    assert_true(model.is_modified())
+
+    var divergent = application.on_input(model, InputEvent(KeyEvent.character("X")))
+    _ = application.update(model, divergent.take())
+    # The bytes equal the saved file, but this is a distinct history branch.
+    assert_equal(model.editor.engine.document.to_string(), "Xalpha\n")
+    assert_true(model.is_modified())
+    redo = application.on_input(
+        model,
+        InputEvent(KeyEvent.character("y", KeyEvent.CONTROL)),
+    )
+    _ = application.update(model, redo.take())
+    assert_equal(model.editor.engine.document.to_string(), "Xalpha\n")
+    assert_true(model.is_modified())
+
+
+def test_editor_requires_confirmation_before_discarding_dirty_buffer() raises:
+    var application = EditorApplication()
+    var initialized = application.init()
+    var model = initialized.take_model()
+    var inserted = application.on_input(model, InputEvent(KeyEvent.character("x")))
+    _ = application.update(model, inserted.take())
+    assert_true(model.is_modified())
+
+    var first_quit_message = application.on_input(
+        model, InputEvent(KeyEvent.character("q", KeyEvent.CONTROL))
+    )
+    var first_quit = application.update(model, first_quit_message.take())
+    assert_true(first_quit.control == ControlFlow.CONTINUE)
+    assert_true(model.confirming_quit)
+    assert_true("unsaved changes" in model.status)
+
+    var second_quit_message = application.on_input(
+        model, InputEvent(KeyEvent.character("q", KeyEvent.CONTROL))
+    )
+    var second_quit = application.update(model, second_quit_message.take())
+    assert_true(second_quit.control == ControlFlow.EXIT)
+
+
+def test_editor_status_uses_display_columns_for_wide_text() raises:
+    var application = EditorApplication()
+    var initialized = application.init()
+    var model = initialized.take_model()
+    var inserted = application.on_input(model, InputEvent(KeyEvent.character("界")))
+    _ = application.update(model, inserted.take())
+    var buffer = Buffer(Rect(0, 0, 64, 10))
+    var area = buffer.area.copy()
+    render_editor_example(model, area, buffer)
+    assert_true("Col 3" in row(buffer, 8))
+
+
+def test_editor_surfaces_actionable_file_error_details() raises:
+    var missing = String(".pixi/test-files/definitely-missing-mojotui-file.txt")
+    var application = EditorApplication(missing)
+    var initialized = application.init()
+    var model = initialized.take_model()
+    var adapter = EditorAdapter()
+    var startup = initialized.take_commands()
+    adapter.execute(startup.pop(0))
+    var failures = adapter.take_messages()
+    _ = application.update(model, failures.pop(0))
+    assert_true("load failed" in model.status)
+    assert_true(missing in model.status)
+    assert_true(":" in model.status)
 
 
 def main() raises:

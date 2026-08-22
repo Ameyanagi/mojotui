@@ -27,7 +27,7 @@ channels = [
 Then add the package:
 
 ```sh
-pixi add mojo-mojotui
+pixi add "mojo-mojotui==0.1.1"
 ```
 
 Once installed, run your own file with:
@@ -47,6 +47,8 @@ pixi install --locked
 pixi run check
 pixi run dashboard
 pixi run editor -- notes.txt
+pixi run fuzzy
+pixi run form
 pixi run virtual-list
 ```
 
@@ -59,7 +61,8 @@ pixi run mojo run -I . your_file.mojo
 The dashboard exits with `q` or Ctrl-C. Up and Down change the selected process;
 Tab, Left, and Right change the active view.
 
-The editor accepts an optional UTF-8 file path. Ctrl-S saves, Ctrl-Q exits,
+The editor accepts an optional UTF-8 file path. Ctrl-S saves; Ctrl-Q exits a
+clean buffer and asks for a second Ctrl-Q before discarding unsaved changes.
 Ctrl-Z/Ctrl-Y undo and redo, and terminal bracketed paste becomes one editor
 transaction. Running `pixi run editor` without a path opens an in-memory
 buffer. See [the editor example guide](docs/editor-example.md) for controls,
@@ -69,6 +72,11 @@ The virtual-list example navigates 50,000 logical rows without constructing
 50,000 rich-text values. Home/End and Page Up/Page Down demonstrate distant
 viewport jumps, with page size derived from the live terminal viewport; `q` or
 Escape exits.
+
+The fuzzy picker keeps one focused editor-backed query, reports empty/result
+counts, and prints the chosen value. The form example demonstrates Tab and
+Shift-Tab traversal, field validation with error focus, toggles, submit, and
+cancel as one typed application workflow.
 
 `pixi run check` runs the Mojo tests, builds the executable fixtures, exercises
 terminal restoration through a PTY, verifies formatting, compiles with
@@ -171,6 +179,8 @@ backend objects. [TYPE_SAFETY.md](TYPE_SAFETY.md) records the enforced rules.
 
 - [PLAN.md](PLAN.md) contains scope, phases, gates, and risks.
 - [ARCHITECTURE.md](ARCHITECTURE.md) explains package boundaries and data flow.
+- [docs/reference-architecture.md](docs/reference-architecture.md) records the
+  pinned reference research, current safety contracts, and honest v0.2 target.
 - [EDITOR.md](EDITOR.md) covers the editor model and integration points.
 - [RUNTIME.md](RUNTIME.md) defines the task-runtime adapter contract.
 - [docs/dashboard.md](docs/dashboard.md) walks through the example application.
@@ -184,11 +194,16 @@ backend objects. [TYPE_SAFETY.md](TYPE_SAFETY.md) records the enforced rules.
   Ratatui 0.30.2 fixture contract and deliberate differences.
 - [docs/stability.md](docs/stability.md) defines supported and experimental
   API tiers.
+- [docs/compatibility.md](docs/compatibility.md) records exact compiler,
+  dependency, platform, and static-build constraints.
+- [docs/releasing.md](docs/releasing.md) documents source and channel release
+  gates.
 - [docs/terminals.md](docs/terminals.md) lists platform and terminal assumptions.
 - [docs/limitations.md](docs/limitations.md) records known gaps.
 
 ## Status
 
-The APIs may change before 1.0. Local macOS and Linux ARM64 validation passes.
-GitHub Actions runs the complete locked check on macOS ARM64, Linux ARM64, and
-Linux x86-64.
+The APIs may change before 1.0. Version `0.1.1` is compiled for exact stable
+Mojo `1.0.0`; the precompiled package is not a compiler-independent static
+library. GitHub Actions runs the complete locked source and installed-package
+checks on macOS ARM64, Linux ARM64, and Linux x86-64.

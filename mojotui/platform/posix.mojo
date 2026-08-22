@@ -78,7 +78,12 @@ struct PosixPollPairStatus(Copyable):
 
 
 struct PosixTerminalMode(Movable):
-    """RAII owner of one saved POSIX terminal configuration."""
+    """RAII owner of one saved POSIX terminal configuration.
+
+    Construction refuses an already-raw descriptor. This prevents destructive
+    nested Mojotui restores on the same input TTY. It is an overlap guard, not
+    a process-global or cross-process device lease.
+    """
 
     var descriptor: Int
     var saved: Array[UInt64, _TERMIOS_WORDS]
@@ -114,6 +119,19 @@ struct PosixTerminalMode(Movable):
         # SAFETY: `raw` has the same valid storage invariant as `saved` and is
         # used only during this initializer.
         external_call["cfmakeraw", NoneType](Pointer(to=raw[0]))
+        var already_raw = True
+        for index in range(_TERMIOS_WORDS):
+            if raw[index] != self.saved[index]:
+                already_raw = False
+                break
+        if already_raw:
+            raise Error(
+                String(
+                    "input descriptor ",
+                    descriptor,
+                    " is already in raw mode; another terminal session may own it",
+                )
+            )
         # SAFETY: `raw` contains a configuration produced by libc from the
         # successfully captured configuration for this same descriptor.
         status = external_call["tcsetattr", c_int](
@@ -264,6 +282,37 @@ def read_available(descriptor: Int, limit: Int = 4096) raises -> List[UInt8]:
     for index in range(count):
         result.append(storage[index])
     return result^
+
+
+def write_all(descriptor: Int, content: StringSlice) raises:
+    """Write every byte or report the first non-interrupt transport error."""
+    var remaining = String(content)
+    while remaining.byte_length() > 0:
+        # SAFETY: `remaining` owns a live, null-terminated byte sequence for the
+        # call. `write` reads at most `byte_length` bytes, retains no pointer,
+        # and its signed result is checked before slicing the owned string.
+        var bytes = remaining.as_bytes()
+        var written = external_call["write", Int](
+            descriptor,
+            bytes.unsafe_ptr(),
+            remaining.byte_length(),
+        )
+        if written < 0:
+            if get_errno().value == _EINTR:
+                continue
+            raise Error(
+                "terminal write failed for descriptor ",
+                String(descriptor),
+                " with errno ",
+                String(get_errno().value),
+            )
+        if written == 0:
+            raise Error(
+                "terminal write made no progress for descriptor ",
+                String(descriptor),
+            )
+        var suffix = String(remaining[byte = Int(written) :])
+        remaining = suffix^
 
 
 def atomic_replace_file(var source: String, var destination: String) raises:

@@ -1,6 +1,7 @@
 """Minimal fzf-style picker with grapheme-safe match highlighting."""
 
 from std.collections import List as MojoList, Optional
+from std.utils import Variant
 
 from mojotui import (
     AnsiBackend,
@@ -10,6 +11,7 @@ from mojotui import (
     Color,
     Command,
     Constraint,
+    EditorCommand,
     EditorState,
     InitResult,
     InputEvent,
@@ -19,6 +21,7 @@ from mojotui import (
     List,
     ListItem,
     ListState,
+    MemoryClipboard,
     Rect,
     RuntimeAdapter,
     Style,
@@ -29,8 +32,13 @@ from mojotui import (
     TextInput,
     UpdateResult,
     detect_terminal_capabilities,
+    execute_text_input_command,
     render_line,
+    terminal_text_input_command,
 )
+
+
+comptime FuzzyMessage = Variant[KeyEvent, EditorCommand]
 
 
 def _candidates() -> MojoList[String]:
@@ -90,69 +98,60 @@ def _matches(query: StringSlice) -> MojoList[String]:
 
 
 struct FuzzyModel(Movable):
-    var query: String
+    var input: EditorState
+    var clipboard: MemoryClipboard
+    var matches: MojoList[String]
     var selection: ListState
     var chosen: String
 
     def __init__(out self):
-        self.query = String()
+        self.input = EditorState()
+        self.clipboard = MemoryClipboard()
+        self.matches = _candidates()
         self.selection = ListState(selected=UInt(0))
         self.chosen = String()
 
 
-def _erase_last_grapheme(mut text: String):
-    var previous = 0
-    var end = 0
-    for grapheme in text.graphemes():
-        previous = end
-        end += grapheme.byte_length()
-    var shortened = String(text[byte=:previous])
-    text = shortened^
+def _query(model: FuzzyModel) -> String:
+    return model.input.engine.document.to_string()
 
 
 def _reset_selection(mut model: FuzzyModel):
-    var matches = _matches(model.query)
-    var count = len(matches)
+    var query = _query(model)
+    model.matches = _matches(query)
+    var count = len(model.matches)
     if count > 0:
         model.selection.select(UInt(0), count)
     else:
         model.selection.select(None, 0)
 
 
-def _handle_key(mut model: FuzzyModel, key: KeyEvent) -> Bool:
+def _handle_key(mut model: FuzzyModel, key: KeyEvent) raises -> Bool:
     if not key.is_activation():
         return False
-    var matches = _matches(model.query)
     if key.code == KeyEvent.DOWN:
-        model.selection.next(len(matches))
+        model.selection.next(len(model.matches))
     elif key.code == KeyEvent.UP:
-        model.selection.previous(len(matches))
+        model.selection.previous(len(model.matches))
     elif key.code == KeyEvent.ENTER:
         if model.selection.selected:
-            model.chosen = matches[Int(model.selection.selected.value())].copy()
+            model.chosen = model.matches[Int(model.selection.selected.value())].copy()
             return True
-    elif key.code == KeyEvent.BACKSPACE:
-        _erase_last_grapheme(model.query)
-        _reset_selection(model)
-    elif key.code == KeyEvent.CHARACTER and key.modifiers == KeyEvent.NO_MODIFIERS:
-        model.query += key.text
-        _reset_selection(model)
     return False
 
 
-def _items(query: StringSlice) raises -> MojoList[ListItem]:
+def _items(query: StringSlice, matches: MojoList[String]) raises -> MojoList[ListItem]:
     var items = MojoList[ListItem]()
     var patch = StylePatch(
         foreground=Color.indexed(6),
         add_modifiers=Style.BOLD,
     )
-    var candidates = _candidates()
-    for index in range(len(candidates)):
-        var positions = _match_positions(candidates[index], query)
+    for index in range(len(matches)):
+        var positions = _match_positions(matches[index], query)
         if positions:
             items.append(
                 ListItem.from_line(
-                    Line.highlighted(candidates[index].copy(), positions.value(), patch)
+                    Line.highlighted(matches[index].copy(), positions.value(), patch)
                 )
             )
     return items^
@@ -160,7 +159,7 @@ def _items(query: StringSlice) raises -> MojoList[ListItem]:
 
 struct FuzzyApplication(Application, Copyable):
     comptime Model = FuzzyModel
-    comptime Message = KeyEvent
+    comptime Message = FuzzyMessage
     comptime Effect = Bool
 
     def __init__(out self):
@@ -170,8 +169,18 @@ struct FuzzyApplication(Application, Copyable):
         return InitResult[Self.Model, Self.Effect].ready(FuzzyModel())
 
     def update(
-        mut self, mut model: Self.Model, var key: Self.Message
+        mut self, mut model: Self.Model, var message: Self.Message
     ) raises -> UpdateResult[Self.Effect]:
+        if message.isa[EditorCommand]():
+            if execute_text_input_command(
+                model.input,
+                message[EditorCommand],
+                model.clipboard,
+            ):
+                _reset_selection(model)
+                return UpdateResult[Self.Effect].redraw_only()
+            return UpdateResult[Self.Effect].unchanged()
+        var key = message[KeyEvent].copy()
         if not key.is_activation():
             return UpdateResult[Self.Effect].unchanged()
         if key.code == KeyEvent.ESCAPE or (
@@ -190,14 +199,22 @@ struct FuzzyApplication(Application, Copyable):
         ).split(area)
         if len(regions) < 3:
             return
-        var input_state = EditorState(model.query.copy())
         TextInput.with_block(
-            Block.bordered(Line.from_text(" Filter ")), focused=False
-        ).render(regions[0], buffer, input_state)
-        var list_state = model.selection.copy()
-        List(_items(model.query)).render(regions[1], buffer, list_state)
+            Block.bordered(Line.from_text(" Filter ")), focused=True
+        ).render_readonly(regions[0], buffer, model.input)
+        if len(model.matches) == 0:
+            render_line(Line.from_text("No matches"), regions[1], buffer)
+        else:
+            var list_state = model.selection.copy()
+            var query = _query(model)
+            List(_items(query, model.matches)).render(regions[1], buffer, list_state)
         render_line(
-            Line.from_text("↑/↓ select  Enter choose  Esc/Ctrl-C quit"),
+            Line.from_text(
+                String(
+                    len(model.matches),
+                    " matches  ↑/↓ select  Enter choose  Esc/Ctrl-C quit",
+                )
+            ),
             regions[2],
             buffer,
         )
@@ -205,10 +222,13 @@ struct FuzzyApplication(Application, Copyable):
     def on_input(
         self, model: Self.Model, var event: InputEvent
     ) raises -> Optional[Self.Message]:
+        var command = terminal_text_input_command(event)
+        if command:
+            return Self.Message(command.take())
         if event.isa[KeyEvent]():
             var key = event[KeyEvent].copy()
             if key.is_activation():
-                return key^
+                return Self.Message(key^)
         return None
 
 

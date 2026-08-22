@@ -1,6 +1,26 @@
 """An array-backed implicit-treap piece table with cached text metrics."""
 
 from std.collections import List
+from std.memory import ArcPointer
+
+
+struct _DocumentRevisionToken(Movable):
+    """Identity-only allocation for one exact document history state."""
+
+    def __init__(out self):
+        pass
+
+
+struct DocumentRevision(Copyable, Equatable):
+    """Collision-free identity for one exact document history state."""
+
+    var _identity: ArcPointer[_DocumentRevisionToken]
+
+    def __init__(out self):
+        self._identity = ArcPointer(_DocumentRevisionToken())
+
+    def __eq__(self, other: Self) -> Bool:
+        return self._identity is other._identity
 
 
 struct PieceSource(Copyable, Equatable, ImplicitlyCopyable):
@@ -131,6 +151,7 @@ struct Document(Movable):
     var nodes: List[_PieceNode]
     var root: Int
     var version: Int
+    var _revision: DocumentRevision
     var markers: List[_Marker]
     var next_marker_id: Int
 
@@ -140,6 +161,7 @@ struct Document(Movable):
         self.nodes = List[_PieceNode]()
         self.root = -1
         self.version = 0
+        self._revision = DocumentRevision()
         self.markers = List[_Marker]()
         self.next_marker_id = 0
         var length = self.original.byte_length()
@@ -356,6 +378,17 @@ struct Document(Movable):
             raise Error("document version exhausted")
         self.version += 1
 
+    def revision(self) -> DocumentRevision:
+        """Return the exact O(1) identity of the current document state."""
+        return self._revision.copy()
+
+    def _advance_revision(mut self):
+        self._revision = DocumentRevision()
+
+    def _restore_revision(mut self, revision: DocumentRevision):
+        """Restore an identity retained by transactional undo or redo."""
+        self._revision = revision.copy()
+
     def _ensure_version_available(self) raises:
         if self.version == Int.MAX:
             raise Error("document version exhausted")
@@ -386,6 +419,7 @@ struct Document(Movable):
         self.root = self._merge(self._merge(before, inserted), after)
         self._markers_after_insert(offset, byte_length)
         self._bump_version()
+        self._advance_revision()
 
     def _collect(self, mut result: String, node: Int):
         if node < 0:
@@ -458,6 +492,7 @@ struct Document(Movable):
         self.root = self._merge(before, after)
         self._markers_after_delete(start, end)
         self._bump_version()
+        self._advance_revision()
         return removed^
 
     def replace(mut self, start: Int, end: Int, var text: String) raises -> String:
@@ -484,6 +519,7 @@ struct Document(Movable):
             self.root = self._merge(self._merge(prefix, inserted), suffix)
             self._markers_after_insert(start, byte_length)
         self._bump_version()
+        self._advance_revision()
         return removed^
 
     def _markers_after_insert(mut self, offset: Int, byte_length: Int):

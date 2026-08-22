@@ -793,8 +793,9 @@ Initial performance targets:
 
 ## Release plan
 
-No public tag has been created. Earlier planning used release-like labels for
-capability checkpoints; they did not identify published artifacts:
+No source tag has been created. An untagged `0.1.0` Conda artifact was published
+on 2026-08-21; `0.1.1` is the corrective first source-tagged release. Earlier
+planning used release-like labels for capability checkpoints:
 
 | Earlier label | Completed, unpublished capability |
 | --- | --- |
@@ -811,14 +812,19 @@ capability checkpoints; they did not identify published artifacts:
 The earlier `0.7` and `0.8` labels referred to Stage I and Stage J planning,
 not published releases. The public targets below replace those labels.
 
-`v0.1.0` is the first public release target. It includes all completed work
-above plus Stage I: dependency-directed public subpackages, validated symbols,
-headless extension testing, consistent builders, reproducible Ratatui fixtures,
-and installability gates. The distribution is one independently versioned
-`mojotui` library containing public subpackages and a top-level convenience
-package; those subpackages are not separate release artifacts.
+`v0.1.1` packages the completed work above with exact compiler/dependency
+metadata, bounded input, frame/session safety hardening, installed-subpackage
+smoke tests, and coherent editor, fuzzy, and form workflows. The distribution
+is one independently versioned `mojotui` library containing import namespaces
+and a top-level convenience package; those namespaces are not separate release
+artifacts.
 
-Stage J started before `v0.1.0`: BarChart, Chart, lazy `VirtualList` rendering,
+Stage I is explicitly rescheduled to `v0.2.0`: dependency-directed public
+packages, validated symbol families, headless extension testing, consistent
+builders, reproducible Ratatui fixtures, and an external widget fixture remain
+open. Version `0.1.1` does not claim those gates are complete.
+
+Stage J started before `v0.1.1`: BarChart, Chart, lazy `VirtualList` rendering,
 indexed collection viewport jumps, and their profiling benchmarks are shipped.
 The remaining visible-paragraph, configuration-depth, Canvas, GPU, and any
 benchmark-earned frame-optimization work follows the release gates.
@@ -829,11 +835,31 @@ archive is canonical. A precompiled package may be published only after its
 recipe pins the compiler compatibility from `pixi.toml` and `pixi.lock` and
 passes fresh-prefix consumer tests on every supported target.
 
-Before the first public release, provide a quick start, architecture overview,
+For each source-tagged release, maintain a quick start, architecture overview,
 dashboard tutorial, editor example, custom-widget guide, backend guide, API
 documentation, terminal support matrix, and known-limitations page.
 
 ## Local release evidence
+
+The 2026-08-22 `v0.1.1` release candidate on macOS ARM64 uses stable Mojo
+`1.0.0`, Moji `0.1.0`, and Pixi `0.76.2`.
+
+- `pixi run --locked check` passes 306 Mojo tests across 33 test modules and
+  all 20 compile-fail fixtures.
+- Eight examples build, and 15 PTY lifecycle cases pass, including overlapping
+  raw-session rejection, retryable cleanup halves, partial host-initialization
+  rollback, dirty-editor confirmation, and virtual-list navigation.
+- The unsafe audit finds 10 documented FFI calls in one allowlisted platform
+  file and none elsewhere.
+- The local Conda package resolves exact public `mojo-compiler ==1.0.0` and
+  `mojo-moji ==0.1.0` dependencies, precompiles with warnings as errors, passes
+  its expanded installed-subpackage smoke, and passes exact artifact-metadata
+  validation.
+- Optimized symbolized profiles (`-O3 -g1`) and current timing evidence are
+  recorded in `benchmarks/README.md`.
+
+For historical context, the earlier PR #4 refresh recorded the following
+pre-candidate baseline.
 
 The 2026-08-22 macOS ARM64 PR #4 refresh used stable Mojo `1.0.0` and Pixi
 `0.76.2` after merging `main` at `5a65cdf`.
@@ -850,7 +876,7 @@ The 2026-08-22 macOS ARM64 PR #4 refresh used stable Mojo `1.0.0` and Pixi
   `PythonObject` use in the library.
 - The unsafe audit found nine documented FFI calls in one allowlisted platform
   file and none elsewhere.
-- The Conda recipe pins `mojo-compiler =1.0.0`; its package task builds the
+- The Conda recipe pinned `mojo-compiler =1.0.0`; its package task built the
   precompiled library and runs an installed-package consumer smoke test.
 - Current collection profiling evidence and reproduction commands live in
   `benchmarks/README.md`; this refresh does not relabel older toolchain timing
@@ -860,10 +886,11 @@ The compiler distribution links against a newer macOS deployment target than
 the local build target and emits linker warnings during executable builds. The
 builds exit successfully. This toolchain warning is outside Mojotui source.
 
-The CI workflow runs the locked suite on macOS ARM64, Linux ARM64, and Linux
-x86-64 and runs the installed-package smoke on Linux x86-64 for pushes and pull
-requests. A separate tag workflow repeats the source matrix and creates a
-source release only after every target passes.
+The CI workflow runs both the locked source suite and an isolated-source package
+build with installed-package smoke and exact metadata validation on macOS ARM64,
+Linux ARM64, and Linux x86-64. A separate tag workflow builds one canonical
+source archive, repeats both matrices from that archive, and publishes only
+after every target passes.
 
 ## Risk register
 

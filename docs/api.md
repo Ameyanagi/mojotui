@@ -13,7 +13,7 @@ application wants narrower imports.
 | Render transactions | `Frame`, `CompletedFrame`, `Terminal` |
 | Terminal output | `FramePatch`, `AnsiBackend`, `InlineBackend`, `HeadlessBackend`, `detect_terminal_capabilities`, `terminal_capabilities_from_environment` |
 | Terminal lifecycle | `TerminalSession`, `SessionOptions`, `MouseCapture` |
-| Input | `InputParser`, `InputEvent`, `KeyCode`, `KeyModifiers`, `KeyEventKind`, `KeyEvent`, `MouseKind`, `MouseButton`, `MouseEvent`, `PasteEvent` |
+| Input | `InputLimits`, `InputParser`, `InputEvent`, `KeyCode`, `KeyModifiers`, `KeyEventKind`, `KeyEvent`, `MouseKind`, `MouseButton`, `MouseEvent`, `PasteEvent` |
 | Polling | `PosixReactor`, `ReactorPoll` |
 | Application state | `Application`, `InitResult`, `ApplicationRuntime`, `UpdateResult`, `ControlFlow`, `MessageQueue` |
 | Effects | `Command`, `Subscription`, `OperationTracker`, `CancellationToken` |
@@ -54,6 +54,9 @@ grapheme.
 overlays one complete buffer after growing to their union.
 `Buffer.differences()` returns row-major `BufferDifference` values containing
 both resolved cells and rejects buffers with different areas.
+`Buffer.validate_topology()` rejects malformed storage and orphaned wide-cell
+leaders or continuations. `FramePatch.validate()` protects third-party backend
+boundaries, and frames are accepted only by the `Terminal` that created them.
 `Rect.centered(width, height)` clamps requested extents and centers them with
 odd remainders biased toward the left and top.
 

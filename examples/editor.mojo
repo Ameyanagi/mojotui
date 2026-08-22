@@ -21,6 +21,7 @@ from mojotui import (
     Command,
     Constraint,
     ControllerActionKind,
+    DocumentRevision,
     Editor,
     EditorCommand,
     EditorControllerAction,
@@ -53,6 +54,7 @@ from mojotui import (
     UpdateResult,
     default_editor_keymap,
     detect_terminal_capabilities,
+    display_column,
     execute_editor_command,
     render_line,
     text_input_action,
@@ -71,7 +73,7 @@ struct SaveFileEffect(Copyable):
     var temporary_path: String
     var content: String
     var options: SaveOptions
-    var document_version: Int
+    var revision: DocumentRevision
 
     def __init__(
         out self,
@@ -79,13 +81,13 @@ struct SaveFileEffect(Copyable):
         var temporary_path: String,
         var content: String,
         options: SaveOptions,
-        document_version: Int,
+        revision: DocumentRevision,
     ):
         self.path = path^
         self.temporary_path = temporary_path^
         self.content = content^
         self.options = options.copy()
-        self.document_version = document_version
+        self.revision = revision.copy()
 
 
 comptime EditorExampleEffect = Variant[LoadFileEffect, SaveFileEffect]
@@ -100,22 +102,31 @@ struct FileLoadedMessage(Copyable):
 
 struct FileSavedMessage(Copyable):
     var metadata: FileMetadata
-    var document_version: Int
+    var revision: DocumentRevision
 
     def __init__(
         out self,
         metadata: FileMetadata,
-        document_version: Int,
+        revision: DocumentRevision,
     ):
         self.metadata = metadata.copy()
-        self.document_version = document_version
+        self.revision = revision.copy()
 
 
 struct FileFailedMessage(Copyable):
     var operation: String
+    var path: String
+    var detail: String
 
-    def __init__(out self, var operation: String):
+    def __init__(
+        out self,
+        var operation: String,
+        var path: String,
+        var detail: String,
+    ):
         self.operation = operation^
+        self.path = path^
+        self.detail = detail^
 
 
 comptime EditorExampleMessage = Variant[
@@ -139,8 +150,9 @@ struct EditorExampleModel(Movable):
     var line_ending: LineEnding
     var had_bom: Bool
     var metadata: Optional[FileMetadata]
-    var saved_version: Int
+    var saved_revision: DocumentRevision
     var save_generation: Int
+    var confirming_quit: Bool
     var accent: Color
     var status_background: Color
 
@@ -164,8 +176,9 @@ struct EditorExampleModel(Movable):
         self.line_ending = LineEnding.LF
         self.had_bom = False
         self.metadata = None
-        self.saved_version = self.editor.engine.document.version
+        self.saved_revision = self.editor.engine.document.revision()
         self.save_generation = 0
+        self.confirming_quit = False
         self.accent = AdaptiveColor(
             ProfiledColor.from_rgb(70, 60, 160),
             ProfiledColor.from_rgb(80, 200, 255),
@@ -176,7 +189,7 @@ struct EditorExampleModel(Movable):
         ).resolve(capabilities)
 
     def is_modified(self) -> Bool:
-        return self.editor.engine.document.version != self.saved_version
+        return self.editor.engine.document.revision() != self.saved_revision
 
 
 def _control_key(key: KeyEvent, text: StringSlice) -> Bool:
@@ -231,7 +244,7 @@ def _save_command(
         model.status = "cannot save an untitled buffer — restart with a path"
         return None
     model.save_generation += 1
-    var version = model.editor.engine.document.version
+    var content = model.editor.engine.document.to_string()
     var temporary_path = (
         model.path + ".mojotui." + String(model.save_generation) + ".tmp"
     )
@@ -243,9 +256,9 @@ def _save_command(
     var effect = SaveFileEffect(
         model.path,
         temporary_path^,
-        model.editor.engine.document.to_string(),
+        content^,
         options,
-        version,
+        model.editor.engine.document.revision(),
     )
     model.status = "saving…"
     return Command(EditorExampleEffect(effect^))
@@ -290,6 +303,7 @@ def render_editor_example(
 
     var primary = model.editor.engine.selections.primary_selection()
     var position = model.editor.engine.document.position_at(primary.head)
+    var column = display_column(model.editor.engine.document, primary.head)
     var status_style = Style(
         foreground=model.accent,
         background=model.status_background,
@@ -301,10 +315,7 @@ def render_editor_example(
             [
                 Span(" " + model.status, status_style),
                 Span(
-                    "  Ln "
-                    + String(position.line + 1)
-                    + ", Col "
-                    + String(position.byte_column + 1),
+                    "  Ln " + String(position.line + 1) + ", Col " + String(column + 1),
                     status_style,
                 ),
             ]
@@ -361,7 +372,16 @@ struct EditorApplication(Application, Copyable):
         if message.isa[KeyEvent]():
             var key = message[KeyEvent].copy()
             if _control_key(key, "q"):
+                if model.is_modified() and not model.confirming_quit:
+                    model.confirming_quit = True
+                    model.status = (
+                        "unsaved changes — press Ctrl-Q again to discard, or Ctrl-S to"
+                        " save"
+                    )
+                    return UpdateResult[Self.Effect].redraw_only()
                 return UpdateResult[Self.Effect].exit()
+            if key.is_activation():
+                model.confirming_quit = False
             if _control_key(key, "s"):
                 var command = _save_command(model)
                 if command:
@@ -398,22 +418,25 @@ struct EditorApplication(Application, Copyable):
             model.line_ending = loaded.line_ending
             model.had_bom = loaded.had_bom
             model.metadata = loaded.metadata.copy()
-            model.saved_version = model.editor.engine.document.version
+            model.saved_revision = model.editor.engine.document.revision()
+            model.confirming_quit = False
             model.status = "loaded"
             return UpdateResult[Self.Effect].redraw_only()
 
         if message.isa[FileSavedMessage]():
             var saved = message[FileSavedMessage].copy()
             model.metadata = saved.metadata.copy()
-            model.saved_version = saved.document_version
-            model.status = (
-                "saved" if model.editor.engine.document.version
-                == saved.document_version else "saved older snapshot — unsaved edits remain"
+            model.saved_revision = saved.revision.copy()
+            model.confirming_quit = False
+            model.status = "saved" if not model.is_modified() else (
+                "saved older snapshot — unsaved edits remain"
             )
             return UpdateResult[Self.Effect].redraw_only()
 
         var failure = message[FileFailedMessage].copy()
-        model.status = failure.operation + " failed"
+        model.status = (
+            failure.operation + ' failed for "' + failure.path + '": ' + failure.detail
+        )
         return UpdateResult[Self.Effect].redraw_only()
 
     def view(self, model: Self.Model, area: Rect, mut buffer: Buffer) raises:
@@ -452,8 +475,12 @@ struct EditorAdapter(RuntimeAdapter):
             try:
                 var loaded = self.service.load(effect.path)
                 self.pending.append(EditorExampleMessage(FileLoadedMessage(loaded)))
-            except:
-                self.pending.append(EditorExampleMessage(FileFailedMessage("load")))
+            except error:
+                self.pending.append(
+                    EditorExampleMessage(
+                        FileFailedMessage("load", effect.path, String(error))
+                    )
+                )
             return
 
         var effect = command.effect[SaveFileEffect].copy()
@@ -465,12 +492,14 @@ struct EditorAdapter(RuntimeAdapter):
                 effect.options,
             )
             self.pending.append(
+                EditorExampleMessage(FileSavedMessage(metadata, effect.revision))
+            )
+        except error:
+            self.pending.append(
                 EditorExampleMessage(
-                    FileSavedMessage(metadata, effect.document_version)
+                    FileFailedMessage("save", effect.path, String(error))
                 )
             )
-        except:
-            self.pending.append(EditorExampleMessage(FileFailedMessage("save")))
 
     def start(
         mut self,

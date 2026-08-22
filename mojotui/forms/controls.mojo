@@ -96,6 +96,54 @@ struct TextInput(Copyable, StatefulWidget):
             editor.draw_block = True
         editor.render(visible, buffer, state)
 
+    def render_readonly(
+        self, area: Rect, mut buffer: Buffer, state: EditorState
+    ) raises:
+        """Render without mutating caller-owned viewport state."""
+        self._render_readonly(area, buffer, state)
+
+    def _render_readonly(
+        self,
+        area: Rect,
+        mut buffer: Buffer,
+        state: EditorState,
+    ) raises:
+        var visible = buffer.area.intersection(area)
+        if visible.is_empty():
+            return
+        if state.engine.document.byte_length() == 0 and not self.focused:
+            buffer.fill(visible, Cell(style=self.style))
+            var content = visible.copy()
+            if self.draw_block:
+                self.block.render(visible, buffer)
+                content = self.block.inner(visible)
+            if not content.is_empty():
+                var placeholder = self.placeholder.copy()
+                for index in range(len(placeholder.spans)):
+                    placeholder.spans[index].apply_style_patch(
+                        StylePatch.from_style(self.placeholder_style)
+                    )
+                render_line(
+                    placeholder,
+                    Rect(content.x, content.y, content.width, 1),
+                    buffer,
+                    base_style=self.style,
+                )
+            return
+
+        var cursor_style = (
+            self.cursor_style.copy() if self.focused else self.style.copy()
+        )
+        var editor = Editor(
+            wrap_mode=WrapMode.NONE,
+            style=self.style,
+            cursor_style=cursor_style,
+        )
+        if self.draw_block:
+            editor.block = self.block.copy()
+            editor.draw_block = True
+        editor.render_readonly(visible, buffer, state)
+
 
 def execute_text_input_command[
     C: Clipboard
@@ -139,6 +187,12 @@ struct TextArea(Copyable, StatefulWidget):
 
     def render(self, area: Rect, mut buffer: Buffer, mut state: EditorState) raises:
         self.editor.render(area, buffer, state)
+
+    def render_readonly(
+        self, area: Rect, mut buffer: Buffer, state: EditorState
+    ) raises:
+        """Render without mutating caller-owned viewport state."""
+        self.editor.render_readonly(area, buffer, state)
 
 
 struct Checkbox(Copyable, Widget):

@@ -1,15 +1,23 @@
 from std.collections import List
 from std.os import Pipe
-from std.testing import TestSuite, assert_equal, assert_false, assert_true
+from std.testing import (
+    TestSuite,
+    assert_equal,
+    assert_false,
+    assert_raises,
+    assert_true,
+)
 
 from mojotui import (
     AnsiBackend,
     Backend,
     Cell,
+    CellChange,
     ColorProfile,
     FramePatch,
     HeadlessBackend,
     InlineBackend,
+    Point,
     Rect,
     Size,
     Terminal,
@@ -238,6 +246,53 @@ def test_inline_resize_retains_cursor_anchor_state() raises:
     assert_true(terminal.viewport().equals(Rect(0, 0, 4, 1)))
 
 
+def test_inline_backend_failed_writes_do_not_commit_transport_state() raises:
+    var failed = Terminal(
+        InlineBackend(
+            1,
+            1,
+            999_999,
+            capabilities=TerminalCapabilities.conservative(),
+        )
+    )
+    var failed_frame = failed.begin_frame()
+    _ = failed_frame.buffer.set_cell({0, 0}, Cell("x"))
+    with assert_raises(contains="terminal write failed"):
+        _ = failed.finish_frame(failed_frame^)
+    assert_true(failed.backend.first_frame)
+    assert_false(failed.backend.cursor)
+    assert_equal(failed.frame_count, 0)
+    assert_true(failed.force_full_redraw)
+
+    var pipe = Pipe()
+    var output_descriptor = pipe.fd_out.value().value
+    var terminal = Terminal(
+        InlineBackend(
+            1,
+            1,
+            output_descriptor,
+            capabilities=TerminalCapabilities.conservative(),
+        )
+    )
+    var visible = terminal.begin_frame()
+    visible.set_cursor_position({0, 0})
+    _ = terminal.finish_frame(visible^)
+    terminal.backend.output_descriptor = 999_999
+    with assert_raises(contains="terminal write failed"):
+        terminal.clear()
+    assert_false(terminal.backend.first_frame)
+    assert_true(terminal.backend.cursor)
+    assert_equal(terminal.frame_count, 1)
+    assert_true(terminal.force_full_redraw)
+    terminal.backend.output_descriptor = output_descriptor
+    var retry = terminal.begin_frame()
+    retry.set_cursor_position({0, 0})
+    var completed = terminal.finish_frame(retry^)
+    assert_true(completed.full_redraw)
+    assert_false(terminal.force_full_redraw)
+    assert_equal(pipe.fd_out.value().value, output_descriptor)
+
+
 def test_backends_expose_explicit_terminal_capabilities() raises:
     var capabilities = TerminalCapabilities(
         ColorProfile.ANSI256, TerminalAppearance.LIGHT
@@ -278,6 +333,28 @@ def test_headless_capabilities_have_a_stable_conservative_default() raises:
 def test_custom_backend_inherits_conservative_capabilities() raises:
     var terminal = Terminal(DefaultCapabilityBackend(Rect(0, 0, 1, 1)))
     assert_true(terminal.capabilities().equals(TerminalCapabilities.conservative()))
+
+
+def test_frame_patch_rejects_malformed_change_topology() raises:
+    var area = Rect(0, 0, 3, 1)
+    var outside: List[CellChange] = [CellChange(Point(3, 0), Cell("x"))]
+    with assert_raises(contains="out-of-area cell change"):
+        FramePatch(area, outside^).validate()
+
+    var unordered: List[CellChange] = [
+        CellChange(Point(1, 0), Cell("b")),
+        CellChange(Point(0, 0), Cell("a")),
+    ]
+    with assert_raises(contains="unique and row-major"):
+        FramePatch(area, unordered^).validate()
+
+    var wide = Cell.from_grapheme("界")
+    var overlap: List[CellChange] = [
+        CellChange(Point(0, 0), wide),
+        CellChange(Point(1, 0), Cell("x")),
+    ]
+    with assert_raises(contains="overlaps a preceding wide cell"):
+        FramePatch(area, overlap^).validate()
 
 
 def main() raises:
