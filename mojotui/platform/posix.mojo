@@ -286,16 +286,18 @@ def read_available(descriptor: Int, limit: Int = 4096) raises -> List[UInt8]:
 
 def write_all(descriptor: Int, content: StringSlice) raises:
     """Write every byte or report the first non-interrupt transport error."""
-    var remaining = String(content)
-    while remaining.byte_length() > 0:
-        # SAFETY: `remaining` owns a live, null-terminated byte sequence for the
-        # call. `write` reads at most `byte_length` bytes, retains no pointer,
-        # and its signed result is checked before slicing the owned string.
-        var bytes = remaining.as_bytes()
+    var payload = String(content)
+    var bytes = payload.as_bytes()
+    var offset = 0
+    while offset < payload.byte_length():
+        # SAFETY: `payload` owns these bytes without mutation for the loop.
+        # `offset` advances by checked positive write counts within the span;
+        # libc reads at most the remaining count and retains no pointer. A
+        # partial write may end inside UTF-8, so progress is byte-granular.
         var written = external_call["write", Int](
             descriptor,
-            bytes.unsafe_ptr(),
-            remaining.byte_length(),
+            bytes.unsafe_ptr().unsafe_offset(offset),
+            payload.byte_length() - offset,
         )
         if written < 0:
             if get_errno().value == _EINTR:
@@ -311,8 +313,7 @@ def write_all(descriptor: Int, content: StringSlice) raises:
                 "terminal write made no progress for descriptor ",
                 String(descriptor),
             )
-        var suffix = String(remaining[byte = Int(written) :])
-        remaining = suffix^
+        offset += written
 
 
 def atomic_replace_file(var source: String, var destination: String) raises:
