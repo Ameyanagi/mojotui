@@ -11,4 +11,5 @@ from .posix import (
     read_available,
     terminal_size,
     write_all,
+    write_atomic_file,
 )

@@ -27,7 +27,7 @@ channels = [
 Then add the package:
 
 ```sh
-pixi add "mojo-mojotui==0.1.1"
+pixi add "mojo-mojotui==0.1.2"
 ```
 
 Once installed, run your own file with:
@@ -203,7 +203,7 @@ backend objects. [TYPE_SAFETY.md](TYPE_SAFETY.md) records the enforced rules.
 
 ## Status
 
-The APIs may change before 1.0. Version `0.1.1` is compiled for exact stable
+The APIs may change before 1.0. Version `0.1.2` is compiled for exact stable
 Mojo `1.0.0`; the precompiled package is not a compiler-independent static
 library. GitHub Actions runs the complete locked source and installed-package
 checks on macOS ARM64, Linux ARM64, and Linux x86-64.

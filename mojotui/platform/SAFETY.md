@@ -52,9 +52,27 @@ represented by slicing a String at that boundary.
 
 ## Atomic file replacement
 
-Editor saves prepare a complete sibling temporary file through Mojo's standard
-library. The POSIX boundary then passes two owned, null-terminated string views
-to `rename(2)`. Both strings remain live for the call, embedded nulls are
-rejected, and libc retains neither pointer. Atomic replacement requires the
-temporary file and destination to be on the same filesystem; failures leave
-the prepared temporary file available for recovery.
+Editor saves use `write_atomic_file`: `open(O_CREAT | O_EXCL | O_CLOEXEC)`
+creates a caller-chosen sibling at mode 0600 filtered by the process umask.
+Existing files, including dangling temporary symlinks, are never truncated.
+The new descriptor is immediately transferred to a standard-library
+`FileHandle`, so every exit closes it. Writes use the checked partial-write
+loop. Existing destination ownership and ordinary rwx bits are applied through
+`fchown` and `fchmod` on this descriptor before rename; either failure aborts.
+Set-ID and sticky bits are deliberately dropped. New files retain their
+initial restrictive mode. Destination symlinks and special files are rejected.
+
+Before replacement, the destination identity, size, modification time, access
+bits and ownership are compared with the preparation snapshot. A detected
+change aborts. This is optimistic observation, not a filesystem lock. The
+caller must control the directory and temporary path for the entire operation;
+concurrent hostile directory mutation is outside the contract. Preparation or
+rename failures unlink only the temporary path exclusively created by this
+call. The original destination remains intact when preparation fails.
+
+`atomic_replace_file` passes owned NUL-free path views to `rename(2)`; no pointer
+survives the call. Replacement requires one filesystem. This provides atomic
+visibility, not crash durability: no file or directory `fsync` is promised.
+Extended ACLs, extended attributes and filesystem-specific metadata are not
+copied by this mode-bit API. Callers needing those metadata contracts must use
+a provider that preserves them rather than `LocalFileService`.
