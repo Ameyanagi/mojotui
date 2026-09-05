@@ -20,4 +20,5 @@ python scripts/test-pty.py \
   .pixi/test-bin/session-probe \
   .pixi/test-bin/editor \
   .pixi/test-bin/virtual-list
-python scripts/test-short-write.py .pixi/test-bin/short-write-probe
+mojo build -I . tests/fixtures/utf8_write_probe.mojo -o .pixi/test-bin/utf8-write-probe
+python scripts/test-short-write.py .pixi/test-bin/short-write-probe .pixi/test-bin/utf8-write-probe

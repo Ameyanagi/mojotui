@@ -33,16 +33,16 @@ def wait_for_marker(process: subprocess.Popen[bytes], marker: bytes) -> bytes:
     return bytes(output)
 
 
-def drain_available(read_descriptor: int) -> int:
-    count = 0
+def drain_available(read_descriptor: int) -> bytes:
+    received = bytearray()
     while True:
         try:
             chunk = os.read(read_descriptor, 65536)
         except BlockingIOError:
-            return count
+            return bytes(received)
         if not chunk:
-            return count
-        count += len(chunk)
+            return bytes(received)
+        received.extend(chunk)
 
 
 def fill_pipe(write_descriptor: int) -> int:
@@ -55,7 +55,11 @@ def fill_pipe(write_descriptor: int) -> int:
             return count
 
 
-def run(binary: Path, pipe_capacity: int | None = None) -> None:
+def run(binary: Path, pipe_capacity: int | None = None, *, utf8: bool = False) -> None:
+    failed_marker = b"RECOVERABLE_UTF8_WRITE_FAILURE" if utf8 else b"FAILED_WITHOUT_COMMIT"
+    recovered_marker = b"COMPLETE_UTF8_WRITE" if utf8 else b"RECOVERED_WITH_FULL_REDRAW"
+    expected = "あ".encode("utf-8") * 100_000 if utf8 else b""
+    recovered = bytearray()
     read_descriptor, write_descriptor = os.pipe()
     os.set_blocking(read_descriptor, False)
     os.set_blocking(write_descriptor, False)
@@ -97,13 +101,23 @@ def run(binary: Path, pipe_capacity: int | None = None) -> None:
             else:
                 os.dup2(saved_output, OUTPUT_DESCRIPTOR)
                 os.close(saved_output)
-        control = wait_for_marker(process, b"FAILED_WITHOUT_COMMIT")
-        initial_bytes = drain_available(read_descriptor) - prefilled_bytes
+        control = wait_for_marker(process, failed_marker)
+        initial = drain_available(read_descriptor)[prefilled_bytes:]
+        initial_bytes = len(initial)
         if initial_bytes <= 0 or initial_bytes >= 1_000_000:
             raise AssertionError(
                 "expected a real partial write, observed "
                 f"{initial_bytes} bytes; control={control!r}"
             )
+
+        if utf8:
+            assert initial == expected[:initial_bytes], "partial write changed UTF-8 bytes"
+            try:
+                initial.decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+            else:
+                raise AssertionError("UTF-8 fixture did not split a codepoint at the write boundary")
 
         # File-status flags are shared by the duplicated descriptor in the
         # child. Repair the transport and drain concurrently with its retry.
@@ -115,23 +129,28 @@ def run(binary: Path, pipe_capacity: int | None = None) -> None:
         assert process.stdout is not None
         watched = [read_descriptor, process.stdout.fileno()]
         deadline = time.monotonic() + TIMEOUT_SECONDS
-        while b"RECOVERED_WITH_FULL_REDRAW" not in control and time.monotonic() < deadline:
+        while recovered_marker not in control and time.monotonic() < deadline:
             readable, _, _ = select.select(watched, [], [], 0.1)
             for descriptor in readable:
                 if descriptor == read_descriptor:
-                    drain_available(read_descriptor)
+                    chunk = drain_available(read_descriptor)
+                    if utf8:
+                        recovered.extend(chunk)
                 else:
                     control += os.read(descriptor, 4096)
             if process.poll() is not None and not readable:
                 break
 
-        if b"RECOVERED_WITH_FULL_REDRAW" not in control:
+        if recovered_marker not in control:
             stderr = process.stderr.read() if process.stderr is not None else b""
             raise AssertionError(
                 "probe did not recover after transport repair; "
                 f"exit={process.poll()}, stdout={control!r}, stderr={stderr!r}"
             )
         process.wait(timeout=TIMEOUT_SECONDS)
+        if utf8:
+            recovered.extend(drain_available(read_descriptor))
+            assert bytes(recovered) == expected, "recovered write changed or lost UTF-8 bytes"
         if process.returncode != 0:
             stderr = process.stderr.read() if process.stderr is not None else b""
             raise AssertionError(
@@ -143,8 +162,8 @@ def run(binary: Path, pipe_capacity: int | None = None) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: test-short-write.py PATH_TO_PROBE", file=sys.stderr)
+    if len(sys.argv) not in (2, 3):
+        print("usage: test-short-write.py PATH_TO_PROBE [PATH_TO_UTF8_PROBE]", file=sys.stderr)
         return 2
     binary = Path(sys.argv[1]).resolve()
     run(binary)
@@ -152,6 +171,12 @@ def main() -> int:
     if sys.platform == "linux":
         run(binary, pipe_capacity=4096)
         capacities = "native and reduced Linux pipe capacities"
+    if len(sys.argv) == 3:
+        utf8_binary = Path(sys.argv[2]).resolve()
+        run(utf8_binary, utf8=True)
+        if sys.platform == "linux":
+            run(utf8_binary, pipe_capacity=4096, utf8=True)
+        print(f"UTF-8 partial-write and byte-exact recovery test passed ({capacities}).")
     print(f"ANSI short-write recovery test passed ({capacities}).")
     return 0
 

@@ -46,7 +46,9 @@ presentation and session-control writes use a narrow `write(2)` loop here
 because the standard library convenience API cannot report partial writes. The
 loop retains no pointer, retries interrupts, rejects other errors and zero
 progress, and commits terminal history or lifecycle ownership only after the
-complete write succeeds.
+complete write succeeds. It keeps one owned byte span and advances a byte
+offset; partial POSIX writes can split a UTF-8 codepoint and must never be
+represented by slicing a String at that boundary.
 
 ## Atomic file replacement
 
