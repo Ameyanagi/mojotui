@@ -142,9 +142,11 @@ def main() -> int:
         return 2
     binary = Path(sys.argv[1]).resolve()
     run(binary)
+    capacities = "native pipe capacity"
     if sys.platform == "linux":
         run(binary, pipe_capacity=4096)
-    print("ANSI short-write recovery test passed (native and Linux small-pipe capacity).")
+        capacities = "native and reduced Linux pipe capacities"
+    print(f"ANSI short-write recovery test passed ({capacities}).")
     return 0
 
 
