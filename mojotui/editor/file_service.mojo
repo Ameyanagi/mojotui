@@ -88,6 +88,53 @@ struct SaveOptions(Copyable):
         self.expected = expected.copy()
 
 
+trait _FileReader(Deinitable, Movable):
+    """Internal deterministic seam for observing changes around a text read."""
+
+    def metadata(mut self, path: StringSlice) raises -> FileMetadata:
+        ...
+
+    def read_text(mut self, path: StringSlice) raises -> String:
+        ...
+
+
+struct _LocalFileReader(_FileReader):
+    def __init__(out self):
+        pass
+
+    def metadata(mut self, path: StringSlice) raises -> FileMetadata:
+        return _file_metadata(path)
+
+    def read_text(mut self, path: StringSlice) raises -> String:
+        return Path(path).read_text()
+
+
+def _file_metadata(path: StringSlice) raises -> FileMetadata:
+    var observed = Path(path).stat()
+    return FileMetadata(
+        observed.st_dev,
+        observed.st_ino,
+        observed.st_size,
+        observed.st_mtimespec.as_nanoseconds(),
+    )
+
+
+def _load_with_reader[
+    Reader: _FileReader
+](mut reader: Reader, path: StringSlice) raises -> LoadedFile:
+    var before = reader.metadata(path)
+    var raw = reader.read_text(path)
+    var after = reader.metadata(path)
+    if not before.equals(after):
+        raise Error(String("file '", path, "' changed while loading; retry the load"))
+    var had_bom = raw.startswith("﻿")
+    var content = String(raw[byte=3:]) if had_bom else raw.copy()
+    var line_ending = LineEnding.CRLF if "\r\n" in content else LineEnding.LF
+    if line_ending == LineEnding.CRLF:
+        content = content.replace("\r\n", "\n")
+    return LoadedFile(content^, line_ending, had_bom, after)
+
+
 struct LocalFileService(Copyable):
     """Safe standard-library I/O plus one audited POSIX atomic rename."""
 
@@ -95,27 +142,17 @@ struct LocalFileService(Copyable):
         pass
 
     def metadata(self, path: StringSlice) raises -> FileMetadata:
-        var observed = Path(path).stat()
-        return FileMetadata(
-            observed.st_dev,
-            observed.st_ino,
-            observed.st_size,
-            observed.st_mtimespec.as_nanoseconds(),
-        )
+        return _file_metadata(path)
 
     def load(self, path: StringSlice) raises -> LoadedFile:
-        var raw = Path(path).read_text()
-        var had_bom = raw.startswith("﻿")
-        var content = String(raw[byte=3:]) if had_bom else raw.copy()
-        var line_ending = LineEnding.CRLF if "\r\n" in content else LineEnding.LF
-        if line_ending == LineEnding.CRLF:
-            content = content.replace("\r\n", "\n")
-        return LoadedFile(
-            content^,
-            line_ending,
-            had_bom,
-            self.metadata(path),
-        )
+        """Reject a changed identity, size, or mtime across the complete read.
+
+        This is optimistic observation, not a lock against concurrent writers.
+        The returned metadata belongs to the observed stable file version and
+        can be passed to SaveOptions.expected to reject subsequent changes.
+        """
+        var reader = _LocalFileReader()
+        return _load_with_reader(reader, path)
 
     def has_external_change(
         self, path: StringSlice, expected: FileMetadata

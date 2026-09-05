@@ -10,13 +10,15 @@ platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
 version = "0.1.1"
 
 [tasks]
+source-artifact-check = { cmd = "bash scripts/check-source-artifact.sh", description = "Precompile extracted sources and run a consumer against the artifact" }
+source-artifact-test = { cmd = "python scripts/test-source-artifact.py", description = "Test the shared PR/release archive handoff and checksum failures" }
 bench = { cmd = "mojo run -I . benchmarks/render.mojo", description = "Benchmark full, changed, and unchanged 80x24 ANSI frames" }
 bench-collections = { cmd = "mojo run -I . benchmarks/collections.mojo", description = "Benchmark distant viewport jumps in 50k-row lists and tables" }
 bench-large-list = { cmd = "mojo run -I . benchmarks/large_list.mojo", description = "Benchmark eager and lazy highlighted 50k-row lists with p50/p95" }
 bench-editor = { cmd = "mojo run -I . benchmarks/editor.mojo", description = "Benchmark 10 MiB editor edits, history, and viewport rendering" }
 profile-large-list-build = { cmd = "mojo build -O3 -g1 -I . benchmarks/large_list.mojo -o .pixi/large-list-profile", description = "Build the symbolized optimized large-list profiler binary" }
 profile-render-build = { cmd = "mojo build -O3 -g1 -I . benchmarks/render.mojo -o .pixi/render-profile", description = "Build the symbolized optimized render profiler binary" }
-check = { depends-on = ["test", "lint", "release-contract-test"], description = "Run the complete non-mutating validation suite" }
+check = { depends-on = ["test", "lint", "release-contract-test", "source-artifact-test"], description = "Run the complete non-mutating validation suite" }
 compiler-lint = { cmd = "mojo precompile --Werror --warn-on-unstable-apis mojotui -o .pixi/mojotui-lint.mojoc", description = "Compile the package with warnings treated as errors" }
 counter = { cmd = "mojo run -I . examples/counter.mojo", description = "Run the counter tutorial example" }
 dashboard = { cmd = "mojo run -I . examples/dashboard.mojo", description = "Run the interactive system-monitor dashboard example" }

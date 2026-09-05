@@ -8,9 +8,12 @@ pixi run editor -- notes.txt
 
 Omit the path to open an in-memory demonstration buffer. Mojotui loads and
 saves UTF-8, preserves a detected BOM and LF or CRLF line endings, and checks
-the loaded file metadata before replacing it atomically. A conflicting
-external change therefore reports a save failure instead of being silently
-overwritten.
+the file identity, size, and modification time before and after loading.
+An observed change during the read reports an error asking you to retry.
+Saving checks the loaded metadata before atomic replacement, rejecting later
+external edits. These are optimistic checks, not a filesystem lock: a writer
+that restores the same observed metadata, or writes after the final save
+check, cannot be excluded.
 
 Controls:
 
