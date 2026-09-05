@@ -61,10 +61,16 @@ def run(binary: Path, pipe_capacity: int | None = None) -> None:
     os.set_blocking(write_descriptor, False)
     try:
         if pipe_capacity is not None:
-            fcntl.fcntl(write_descriptor, fcntl.F_SETPIPE_SZ, pipe_capacity)
+            try:
+                fcntl.fcntl(write_descriptor, fcntl.F_SETPIPE_SZ, pipe_capacity)
+            except OSError as error:
+                raise AssertionError(
+                    f"cannot request Linux pipe capacity {pipe_capacity} bytes: {error}; "
+                    "check the runner's pipe-size support and resource limits"
+                ) from error
         full_bytes = fill_pipe(write_descriptor)
         # Linux can reduce a new pipe below 16 KiB when the per-user pipe
-        # budget is exhausted. Open at most the bytes actually in this pipe;
+        # budget is exhausted. Drain at most the bytes actually in this pipe;
         # the probe still must demonstrate a real, nonzero partial write.
         bytes_to_open = min(full_bytes, 16384)
         opened_bytes = 0
