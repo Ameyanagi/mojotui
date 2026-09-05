@@ -23,6 +23,91 @@ from mojotui import (
 )
 
 
+from mojotui.editor.file_service import FileMetadata, _FileReader, _load_with_reader
+from mojotui.platform import atomic_replace_file
+
+
+struct ReplacingFileReader(_FileReader):
+    var replace_before_read: Bool
+    var replace_in_place: Bool
+
+    def __init__(out self, replace_before_read: Bool, replace_in_place: Bool = False):
+        self.replace_before_read = replace_before_read
+        self.replace_in_place = replace_in_place
+
+    def metadata(mut self, path: StringSlice) raises -> FileMetadata:
+        return LocalFileService().metadata(path)
+
+    def replace(self, path: StringSlice) raises:
+        if self.replace_in_place:
+            Path(path).write_text("external update with a different size")
+        else:
+            var sibling = String(path, ".replacement")
+            Path(sibling).write_text("external update")
+            atomic_replace_file(sibling^, String(path))
+
+    def read_text(mut self, path: StringSlice) raises -> String:
+        if self.replace_before_read:
+            self.replace(path)
+        var content = Path(path).read_text()
+        if not self.replace_before_read:
+            self.replace(path)
+        return content^
+
+
+def test_load_rejects_replacement_before_and_after_read() raises:
+    makedirs(".pixi/test-files", exist_ok=True)
+    var target = String(".pixi/test-files/load-race.txt")
+    for index in range(2):
+        var before_read = index == 0
+        Path(target).write_text("original version")
+        var reader = ReplacingFileReader(before_read)
+        var rejected = False
+        try:
+            _ = _load_with_reader(reader, target)
+        except error:
+            rejected = "changed while loading" in String(error)
+        assert_true(rejected)
+        assert_equal(Path(target).read_text(), "external update")
+
+
+def test_load_rejects_in_place_edit_during_read() raises:
+    makedirs(".pixi/test-files", exist_ok=True)
+    var target = String(".pixi/test-files/load-in-place.txt")
+    Path(target).write_text("original")
+    var reader = ReplacingFileReader(False, replace_in_place=True)
+    var rejected = False
+    try:
+        _ = _load_with_reader(reader, target)
+    except error:
+        rejected = "changed while loading" in String(error)
+    assert_true(rejected)
+
+
+def test_loaded_metadata_rejects_later_replacement_on_save() raises:
+    makedirs(".pixi/test-files", exist_ok=True)
+    var target = String(".pixi/test-files/load-then-save.txt")
+    var temporary = String(".pixi/test-files/load-then-save.txt.tmp")
+    Path(target).write_text("original")
+    var service = LocalFileService()
+    var loaded = service.load(target)
+    var replacer = ReplacingFileReader(False)
+    replacer.replace(target)
+    var rejected = False
+    try:
+        _ = service.save_atomic(
+            target.copy(),
+            temporary.copy(),
+            "stale edit",
+            SaveOptions(expected=loaded.metadata.copy()),
+        )
+    except error:
+        rejected = "file changed externally" in String(error)
+    assert_true(rejected)
+    assert_false(Path(temporary).exists())
+    assert_equal(Path(target).read_text(), "external update")
+
+
 def test_stale_highlight_snapshot_is_rejected() raises:
     var state = EditorState("let value")
     var highlights = HighlightState()
