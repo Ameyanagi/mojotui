@@ -10,7 +10,8 @@ permissions:
 
 jobs:
   check:
-    name: Check ${{ matrix.name }}
+    # Keep these names aligned with the required branch-protection checks.
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
