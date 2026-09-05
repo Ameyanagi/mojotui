@@ -19,3 +19,19 @@ is a transitive dependency channel, not a requirement for publishing Mojotui.
 Never move a published tag or overwrite a channel artifact. A correction uses
 a new patch version; `0.1.1` follows this rule because `0.1.0` was already
 published with overly broad runtime metadata.
+
+## Source archive handoff
+
+Both the pull-request smoke workflow and the release workflow call
+`scripts/source-artifact.sh` to create a single Git archive, compute its SHA-256,
+verify the downloaded checksum, and extract the required source files. The
+archive contains committed sources and no Git checkout metadata.
+
+Every PR restores that artifact on Linux x86-64, Linux ARM64, and macOS ARM64,
+installs the locked Pixi environment in the extracted directory, and runs
+`pixi run --locked source-artifact-check`. That check precompiles the extracted
+library with warnings as errors, then runs the package consumer in a fresh
+directory against the resulting `.mojoc`, without importing checkout sources.
+Releases additionally run the full source and Conda package checks before
+publishing. `pixi run --locked source-artifact-test` tests the shared handoff,
+including rejection of a corrupt checksum before any extraction.
