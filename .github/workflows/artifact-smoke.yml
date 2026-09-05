@@ -3,9 +3,7 @@ name: Source artifact smoke
 on:
   push:
     branches: [main]
-    paths: [".github/workflows/**"]
   pull_request:
-    paths: [".github/workflows/**"]
 
 permissions:
   contents: read
