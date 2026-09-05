@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import os
 import select
 import subprocess
@@ -54,15 +55,21 @@ def fill_pipe(write_descriptor: int) -> int:
             return count
 
 
-def run(binary: Path) -> None:
+def run(binary: Path, pipe_capacity: int | None = None) -> None:
     read_descriptor, write_descriptor = os.pipe()
     os.set_blocking(read_descriptor, False)
     os.set_blocking(write_descriptor, False)
     try:
+        if pipe_capacity is not None:
+            fcntl.fcntl(write_descriptor, fcntl.F_SETPIPE_SZ, pipe_capacity)
         full_bytes = fill_pipe(write_descriptor)
+        # Linux can reduce a new pipe below 16 KiB when the per-user pipe
+        # budget is exhausted. Open at most the bytes actually in this pipe;
+        # the probe still must demonstrate a real, nonzero partial write.
+        bytes_to_open = min(full_bytes, 16384)
         opened_bytes = 0
-        while opened_bytes < 16384:
-            opened_bytes += len(os.read(read_descriptor, 16384 - opened_bytes))
+        while opened_bytes < bytes_to_open:
+            opened_bytes += len(os.read(read_descriptor, bytes_to_open - opened_bytes))
         prefilled_bytes = full_bytes - opened_bytes
         try:
             saved_output = os.dup(OUTPUT_DESCRIPTOR)
@@ -133,8 +140,11 @@ def main() -> int:
     if len(sys.argv) != 2:
         print("usage: test-short-write.py PATH_TO_PROBE", file=sys.stderr)
         return 2
-    run(Path(sys.argv[1]).resolve())
-    print("ANSI short-write recovery test passed.")
+    binary = Path(sys.argv[1]).resolve()
+    run(binary)
+    if sys.platform == "linux":
+        run(binary, pipe_capacity=4096)
+    print("ANSI short-write recovery test passed (native and Linux small-pipe capacity).")
     return 0
 
 
