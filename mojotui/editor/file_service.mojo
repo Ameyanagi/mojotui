@@ -3,7 +3,7 @@
 from std.collections import Optional
 from std.pathlib import Path
 
-from ..platform import atomic_replace_file
+from ..platform import write_atomic_file
 
 
 struct LineEnding(Copyable, Equatable, ImplicitlyCopyable):
@@ -136,7 +136,7 @@ def _load_with_reader[
 
 
 struct LocalFileService(Copyable):
-    """Safe standard-library I/O plus one audited POSIX atomic rename."""
+    """Standard-library reads and audited POSIX atomic file replacement."""
 
     def __init__(out self):
         pass
@@ -180,7 +180,10 @@ struct LocalFileService(Copyable):
         """Write a prepared sibling then atomically replace the destination.
 
         The caller chooses a unique temporary path in the destination's
-        directory. A failed rename leaves that path intact for recovery.
+        directory, which the caller must control. Existing ordinary permission
+        bits and ownership are preserved; new files start at 0600 filtered by
+        umask. Preparation failures remove the temporary file. ACLs, extended
+        attributes, special mode bits, and crash durability are not preserved.
         """
         if path == temporary_path:
             raise Error("atomic save temporary path equals destination")
@@ -189,6 +192,5 @@ struct LocalFileService(Copyable):
         ):
             raise Error("file changed externally before save")
         var serialized = self.serialize(content^, options)
-        Path(temporary_path).write_text(serialized)
-        atomic_replace_file(temporary_path.copy(), path.copy())
+        write_atomic_file(temporary_path.copy(), path.copy(), serialized)
         return self.metadata(path)

@@ -15,6 +15,14 @@ external edits. These are optimistic checks, not a filesystem lock: a writer
 that restores the same observed metadata, or writes after the final save
 check, cannot be excluded.
 
+Atomic saves preserve the existing file's ordinary access bits and ownership.
+A new file starts at 0600, filtered by the process umask. Destination symlinks
+and special files are rejected; choose the regular-file target explicitly.
+Temporary names must be unused siblings in a directory controlled by the
+caller, and preparation failures clean up the newly created temporary file.
+Extended ACLs, extended attributes, special mode bits, and crash durability
+require a different file-service provider.
+
 Controls:
 
 - Arrow keys move the cursor; Shift-Left and Shift-Right extend a selection.

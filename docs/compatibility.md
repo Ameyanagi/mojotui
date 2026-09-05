@@ -1,6 +1,6 @@
 # Compatibility
 
-Mojotui `0.1.1` is tested with stable Mojo `1.0.0` and Moji `0.1.0`. Both are
+Mojotui `0.1.2` is tested with stable Mojo `1.0.0` and Moji `0.1.0`. Both are
 exact runtime dependencies of the precompiled Conda artifact because `.mojoc`
 compatibility is compiler-specific.
 

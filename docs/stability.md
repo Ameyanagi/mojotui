@@ -4,10 +4,11 @@ Mojotui is pre-1.0 and pins an exact stable Mojo release. These tiers describe
 how the project manages source changes within that constraint; they are not a
 1.0 compatibility promise.
 
-## v0.1.1 release and distribution
+## Release and distribution
 
-`v0.1.1` is the first source-tagged release. It ships one independently
-versioned `mojotui` distribution containing public import namespaces and a
+`v0.1.1` was the first source-tagged release. `v0.1.2` is a corrective patch
+with the same API tiers and exact compiler/dependency pins. It ships one
+independently versioned `mojotui` distribution containing public import namespaces and a
 top-level convenience import. The `0.1.0` Conda artifacts had no corresponding
 source tag and are superseded.
 

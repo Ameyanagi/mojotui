@@ -4,6 +4,29 @@ All notable user-facing changes to MojoTUI are documented here.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-05
+
+### Fixed
+
+- Preserve existing ordinary file permissions and ownership during atomic
+  editor saves. Create new files and exclusively owned temporary files with
+  restrictive permissions, reject symlink and non-regular destinations, and
+  remove owned temporary files after recoverable failures. Saves require a
+  caller-controlled containing directory; ACLs, extended attributes, and
+  crash durability remain outside the file-service contract.
+- Reject file loads when metadata changes during the read so a stale snapshot
+  cannot authorize overwriting an external update.
+- Advance partial writes by byte offsets without slicing UTF-8 text inside a
+  code point. Exercise byte-exact recovery after a real partial write.
+- Keep PTY readiness inside the visible viewport and exercise short-write
+  recovery on native pipes and reduced-capacity Linux pipes.
+
+### Changed
+
+- Share checksum-verified source archive creation and restoration between PR
+  and release workflows. Test the extracted library and a fresh consumer on
+  all three supported native targets.
+
 ## [0.1.1] - 2026-08-22
 
 This is the first source-tagged corrective release.
@@ -39,6 +62,7 @@ a corresponding Git tag or GitHub source release. Its runtime compiler metadata
 was broader than the precompiled ABI contract. Version `0.1.1` supersedes it;
 new consumers should not install `0.1.0`.
 
-[Unreleased]: https://github.com/Ameyanagi/mojotui/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Ameyanagi/mojotui/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Ameyanagi/mojotui/releases/tag/v0.1.2
 [0.1.1]: https://github.com/Ameyanagi/mojotui/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Ameyanagi/mojo-channel

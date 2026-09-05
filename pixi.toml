@@ -7,7 +7,7 @@ channels = [
 ]
 name = "mojotui"
 platforms = ["osx-arm64", "linux-64", "linux-aarch64"]
-version = "0.1.1"
+version = "0.1.2"
 
 [tasks]
 source-artifact-check = { cmd = "bash scripts/check-source-artifact.sh", description = "Precompile extracted sources and run a consumer against the artifact" }

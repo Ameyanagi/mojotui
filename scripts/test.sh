@@ -22,3 +22,5 @@ python scripts/test-pty.py \
   .pixi/test-bin/virtual-list
 mojo build -I . tests/fixtures/utf8_write_probe.mojo -o .pixi/test-bin/utf8-write-probe
 python scripts/test-short-write.py .pixi/test-bin/short-write-probe .pixi/test-bin/utf8-write-probe
+mojo build -I . tests/fixtures/file_save_probe.mojo -o .pixi/test-bin/file-save-probe
+python scripts/test-file-save.py .pixi/test-bin/file-save-probe

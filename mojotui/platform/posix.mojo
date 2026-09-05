@@ -6,7 +6,11 @@ No pointer or platform ABI type from this module is exposed publicly. See
 
 from std.collections import Array, List
 from std.ffi import c_int, c_short, c_uint, c_ulong, external_call, get_errno
-from std.io import FileDescriptor
+from std.io import FileDescriptor, FileHandle
+from std.io.file import O_CLOEXEC, O_CREAT, O_WRONLY
+from std.pathlib import Path
+from std.os.path import islink
+from std.stat import S_ISREG
 from std.sys import CompilationTarget, is_little_endian
 
 
@@ -328,3 +332,147 @@ def atomic_replace_file(var source: String, var destination: String) raises:
     )
     if status != 0:
         raise Error("atomic file replace failed with errno ", String(get_errno().value))
+
+
+def write_atomic_file(
+    var temporary_path: String, var destination: String, content: StringSlice
+) raises:
+    """Prepare a private, exclusive sibling and preserve POSIX access bits.
+
+    Callers must control the containing directory. Extended ACLs and other
+    filesystem-specific metadata are outside this mode-bit contract.
+    """
+    if "\0" in temporary_path or "\0" in destination:
+        raise Error("filesystem path contains a null byte")
+    if islink(destination):
+        raise Error(
+            String(
+                "atomic save destination '",
+                destination,
+                "' is a symlink; choose its regular-file target explicitly",
+            )
+        )
+    var existing = Path(destination).exists()
+    var device = 0
+    var inode = 0
+    var size = 0
+    var modified_ns = 0
+    var mode = 0o600
+    var owner = c_uint.MAX
+    var group = c_uint.MAX
+    if existing:
+        var observed = Path(destination).lstat()
+        if not S_ISREG(observed.st_mode):
+            raise Error(
+                String(
+                    "atomic save destination '",
+                    destination,
+                    (
+                        "' must be a regular file; choose a file path instead of a"
+                        " symlink or special file"
+                    ),
+                )
+            )
+        mode = Int(observed.st_mode) & 0o777
+        owner = c_uint(observed.st_uid)
+        group = c_uint(observed.st_gid)
+        device = observed.st_dev
+        inode = observed.st_ino
+        size = observed.st_size
+        modified_ns = observed.st_mtimespec.as_nanoseconds()
+    # O_EXCL with O_CREAT rejects both an existing file and a symlink, including
+    # a dangling symlink. New content is never written to an attacker-chosen fd.
+    comptime exclusive = 128 if CompilationTarget.is_linux() else 2048
+    # SAFETY: the owned string is NUL-free and live for open(2), flags are the
+    # native platform constants, and the variadic mode is promoted to c_int.
+    var descriptor = external_call["open", c_int, num_fixed_args=2](
+        temporary_path.as_c_string_slice(),
+        c_int(O_WRONLY | O_CREAT | O_CLOEXEC | exclusive),
+        c_int(0o600),
+    )
+    if descriptor < 0:
+        raise Error(
+            String(
+                "atomic save temporary path '",
+                temporary_path,
+                "' cannot be exclusively created (errno ",
+                get_errno().value,
+                "); choose an unused writable sibling path",
+            )
+        )
+    var file = FileHandle()
+    # SAFETY: transfer the freshly opened fd to the stdlib RAII owner; no other
+    # code owns or closes this descriptor. It is closed on every exit path.
+    file.handle = Int(descriptor)
+    try:
+        write_all(Int(descriptor), content)
+        if existing:
+            # SAFETY: descriptor is a live owned file and uid/gid came from
+            # successful lstat. Failure aborts before replacing the destination.
+            if external_call["fchown", c_int](descriptor, owner, group) != 0:
+                raise Error(
+                    String(
+                        "atomic save destination '",
+                        destination,
+                        "' ownership cannot be preserved (uid ",
+                        owner,
+                        ", gid ",
+                        group,
+                        ", errno ",
+                        get_errno().value,
+                        "); save to a file whose ownership you can retain",
+                    )
+                )
+            # SAFETY: only ordinary rwx bits from the observed destination are
+            # applied to our owned fd, after writing/chown can clear mode bits.
+            if external_call["fchmod", c_int](descriptor, c_uint(mode)) != 0:
+                raise Error(
+                    String(
+                        "atomic save destination '",
+                        destination,
+                        "' permission bits ",
+                        mode,
+                        " cannot be preserved (errno ",
+                        get_errno().value,
+                        "); check the filesystem's permission support",
+                    )
+                )
+        file.close()
+        if existing:
+            var current = Path(destination).lstat()
+            if (
+                current.st_dev != device
+                or current.st_ino != inode
+                or current.st_size != size
+                or current.st_mtimespec.as_nanoseconds() != modified_ns
+                or Int(current.st_mode) & 0o777 != mode
+                or c_uint(current.st_uid) != owner
+                or c_uint(current.st_gid) != group
+            ):
+                raise Error(
+                    String(
+                        "atomic save destination '",
+                        destination,
+                        (
+                            "' changed while preparing replacement; reload before"
+                            " retrying the save"
+                        ),
+                    )
+                )
+        elif Path(destination).exists() or islink(destination):
+            raise Error(
+                String(
+                    "atomic save destination '",
+                    destination,
+                    (
+                        "' appeared while preparing replacement; reload before retrying"
+                        " the save"
+                    ),
+                )
+            )
+        atomic_replace_file(temporary_path.copy(), destination.copy())
+    except error:
+        # SAFETY: unlink only the temporary path successfully created here.
+        # The directory is caller-controlled and no pointer survives the call.
+        _ = external_call["unlink", c_int](temporary_path.as_c_string_slice())
+        raise error^
