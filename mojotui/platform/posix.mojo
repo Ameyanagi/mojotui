@@ -369,7 +369,7 @@ def write_atomic_file(
                     destination,
                     (
                         "' must be a regular file; choose a file path instead of a"
-                        " symlink or special file"
+                        " directory, symlink, or special file"
                     ),
                 )
             )

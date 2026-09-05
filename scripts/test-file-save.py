@@ -20,7 +20,7 @@ def save(target: Path | str, temporary: Path, mask: int = 0o022, *, success=True
         [str(binary), str(target), str(temporary)],
         preexec_fn=configure_child, capture_output=True, text=True, timeout=20,
     )
-    assert (result.returncode == 0) == success, (result.returncode, result.stderr)
+    assert (result.returncode == 0) == success, (result.returncode, result.stdout, result.stderr)
     return result
 
 
@@ -79,7 +79,8 @@ with tempfile.TemporaryDirectory(prefix="mojotui-save-tests-") as folder:
 
     directory = root / "directory"
     directory.mkdir()
-    save(directory, temporary, success=False)
+    failure = save(directory, temporary, success=False)
+    assert "directory, symlink, or special file" in failure.stdout + failure.stderr
     assert directory.is_dir() and not temporary.exists()
 
 print("File save tests passed: 12 mode/umask combinations, 4 new-file policies, ownership, exclusive creation, symlinks, special files, failed-rename cleanup.")
