@@ -46,9 +46,13 @@ else
       shasum -a 256 --check "${archive}.sha256"
     fi
   )
-  mkdir -p "$destination"
+  if [[ -e "$destination" || -L "$destination" ]]; then
+    echo "restore destination '$destination' already exists; choose a fresh directory" >&2
+    exit 1
+  fi
+  mkdir "$destination"
   tar -xzf "${output}/${archive}" --strip-components=1 -C "$destination"
-  for required in pixi.toml pixi.lock mojotui/__init__.mojo conda.recipe/recipe.yaml; do
+  for required in pixi.toml pixi.lock mojotui/__init__.mojo conda.recipe/recipe.yaml conda.recipe/test_package.mojo; do
     test -s "${destination}/${required}" || {
       echo "restored source is missing required file '$required'" >&2
       exit 1

@@ -25,7 +25,9 @@ published with overly broad runtime metadata.
 Both the pull-request smoke workflow and the release workflow call
 `scripts/source-artifact.sh` to create a single Git archive, compute its SHA-256,
 verify the downloaded checksum, and extract the required source files. The
-archive contains committed sources and no Git checkout metadata.
+archive contains committed sources and no Git checkout metadata. Restoration
+requires a fresh destination directory so stale sources cannot contaminate
+the extracted artifact.
 
 Every PR restores that artifact on Linux x86-64, Linux ARM64, and macOS ARM64,
 installs the locked Pixi environment in the extracted directory, and runs

@@ -16,7 +16,7 @@ with tempfile.TemporaryDirectory(prefix="mojotui-artifact-test-") as folder:
     root = pathlib.Path(folder)
     repo, archives, restored = (root / name for name in ("repo", "archives", "restored"))
     repo.mkdir()
-    for name in ("pixi.toml", "pixi.lock", "mojotui/__init__.mojo", "conda.recipe/recipe.yaml"):
+    for name in ("pixi.toml", "pixi.lock", "mojotui/__init__.mojo", "conda.recipe/recipe.yaml", "conda.recipe/test_package.mojo"):
         path = repo / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"fixture for {name}\n")
@@ -28,10 +28,14 @@ with tempfile.TemporaryDirectory(prefix="mojotui-artifact-test-") as folder:
     run("bash", str(SCRIPT), "restore", "mojotui-test", str(archives), str(restored))
     assert not (restored / ".git").exists()
     assert (restored / "pixi.lock").read_bytes() == (repo / "pixi.lock").read_bytes()
+    stale = restored / "stale.mojo"
+    stale.write_text("preserve caller-owned files")
+    run("bash", str(SCRIPT), "restore", "mojotui-test", str(archives), str(restored), success=False)
+    assert stale.read_text() == "preserve caller-owned files"
     run("bash", str(SCRIPT), "restore", "../invalid", str(archives), str(restored), success=False)
     archive = archives / "mojotui-test.tar.gz"
     archive.write_bytes(archive.read_bytes() + b"corrupt")
     rejected = root / "rejected"
     run("bash", str(SCRIPT), "restore", "mojotui-test", str(archives), str(rejected), success=False)
     assert not rejected.exists(), "checksum failure must stop before extraction"
-print("source artifact tests passed (canonical contents, checksum, extraction, invalid input)")
+print("source artifact tests passed (canonical contents, checksum, extraction, fresh destination, invalid input)")
