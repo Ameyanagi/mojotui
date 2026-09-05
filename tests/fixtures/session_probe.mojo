@@ -36,6 +36,9 @@ struct BlockingFailBackend(Backend):
         pass
 
     def viewport(mut self) raises -> Rect:
+        # The host has acquired TerminalSession before asking for its viewport.
+        # Keep raw mode active until the parent acknowledges this readiness.
+        print("READY", flush=True)
         var storage = List[UInt8](length=1, fill=0)
         var input = FileDescriptor(0)
         _ = input.read_bytes(storage)
@@ -277,7 +280,6 @@ def overlapping_session_exit() raises:
 
 
 def host_initialization_failure() raises:
-    print("READY", flush=True)
     var host = TerminalApplicationHost(
         HostProbeAdapter(),
         HostProbeApplication(),
